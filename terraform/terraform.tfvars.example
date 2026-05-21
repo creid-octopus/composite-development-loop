@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars and adjust for your environment.
+# terraform.tfvars is gitignored — don't commit real values.
+
+environment     = "test"
+location        = "East US 2"
+resource_prefix = "creid-devloop"
+sku_name        = "P1v2"

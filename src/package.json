@@ -1,0 +1,16 @@
+{
+  "name": "devloop-demo-app",
+  "version": "1.0.0",
+  "description": "Inner dev loop demo app — visual deployment indicator",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
