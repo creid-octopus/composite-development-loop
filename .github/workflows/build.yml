@@ -203,6 +203,8 @@ jobs:
           space: ${{ secrets.OCTOPUS_SPACE}}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
           project: ${{ vars.OCTOPUS_PROJECT }}
+          git_ref: ${{ (github.ref_type == 'tag' && github.event.repository.default_branch ) || (github.head_ref || github.ref) }}
+          git_commit: ${{ github.event.after || github.event.pull_request.head.sha }}
           package_version: ${{ steps.meta.outputs.version }}
           release_number: ${{ steps.meta.outputs.version }}
 
