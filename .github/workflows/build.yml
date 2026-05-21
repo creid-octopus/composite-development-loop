@@ -46,7 +46,7 @@ jobs:
 
     steps:
       # Check out the repository at the commit that triggered this run.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── Step 1: Compute version and build flags ──────────────────────────────
       # This is the branch-routing logic. It runs a small bash script that sets
@@ -92,7 +92,7 @@ jobs:
       # ── Step 2: Set up Node ──────────────────────────────────────────────────
       # Installs Node 24 (Active LTS) and restores the npm cache keyed on
       # package.json so clean installs don't re-download everything each run.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: "npm"
@@ -168,7 +168,7 @@ jobs:
       #   feature  → OverwriteExisting (fine — pre-release versions are mutable)
       - name: Push package to Octopus
         if: inputs.dry_run != true
-        uses: OctopusDeploy/push-package-action@v3
+        uses: OctopusDeploy/push-package-action@v4
         with:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
@@ -181,7 +181,7 @@ jobs:
       # a deployment back to the exact commit that produced it.
       - name: Push build information
         if: inputs.dry_run != true
-        uses: OctopusDeploy/push-build-information-action@v3
+        uses: OctopusDeploy/push-build-information-action@v4
         with:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
@@ -195,7 +195,7 @@ jobs:
       # in logs and easy to change without touching this file.
       - name: Create Octopus release
         if: inputs.dry_run != true
-        uses: OctopusDeploy/create-release-action@v3
+        uses: OctopusDeploy/create-release-action@v4
         with:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
@@ -211,7 +211,7 @@ jobs:
       # not by additional steps here.
       - name: Deploy to Test
         if: inputs.dry_run != true && steps.meta.outputs.is_release == 'true'
-        uses: OctopusDeploy/deploy-release-action@v3
+        uses: OctopusDeploy/deploy-release-action@v4
         with:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
