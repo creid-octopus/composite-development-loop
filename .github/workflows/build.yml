@@ -171,6 +171,7 @@ jobs:
         uses: OctopusDeploy/push-package-action@v4
         with:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE}}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
           packages: ${{ steps.package.outputs.pkg_path }}
           overwrite_mode: ${{ steps.meta.outputs.overwrite_mode }}
@@ -184,6 +185,7 @@ jobs:
         uses: OctopusDeploy/push-build-information-action@v4
         with:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE}}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
           packages: ${{ env.OCTOPUS_PACKAGE }}
           version: ${{ steps.meta.outputs.version }}
@@ -198,6 +200,7 @@ jobs:
         uses: OctopusDeploy/create-release-action@v4
         with:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE}}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
           project: ${{ vars.OCTOPUS_PROJECT }}
           package_version: ${{ steps.meta.outputs.version }}
@@ -214,7 +217,8 @@ jobs:
         uses: OctopusDeploy/deploy-release-action@v4
         with:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE}}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
           project: ${{ vars.OCTOPUS_PROJECT }}
           release_number: ${{ steps.meta.outputs.version }}
-          environments: Test
+          environments: Development
