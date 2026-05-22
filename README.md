@@ -16,8 +16,8 @@ Sample project for an inner development loop demo using **Octopus Deploy** and *
 │   └── package.json
 └── .github/
     └── workflows/
-        ├── feature-build.yml    # feature/** → pre-release package → Octopus
-        └── main-release.yml     # main → stable release → Octopus → auto-deploy to Test
+        ├── ci.yml           # every push/PR → build + package, no Octopus
+        └── publish.yml      # main push → full release; manual dispatch → feature publish
 ```
 
 ## Infrastructure
@@ -51,10 +51,11 @@ The app reads build metadata from environment variables (set by CI) and falls ba
 
 ## Branch → deployment flow
 
-| Branch pattern | Workflow | Octopus version | Deploy target |
+| Trigger | Workflow | Octopus version | Deploy target |
 |---|---|---|---|
-| `feature/**` | `feature-build.yml` | `0.0.0-feature-<slug>.<n>` | Feature slot (manual trigger) |
-| `main` | `main-release.yml` | `1.0.<run>` | Test (auto), staging/prod via lifecycle |
+| Any push / PR | `ci.yml` | n/a (not published) | — validates only |
+| Push to `main` | `publish.yml` | `1.0.<run>` | Development (auto), staging/prod via lifecycle |
+| Manual dispatch on `feature/**` | `publish.yml` | `0.0.0-feature-<slug>.<n>` | Feature slot (manual trigger in Octopus) |
 
 ### Planned expansion
 

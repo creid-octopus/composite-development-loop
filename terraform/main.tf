@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -14,6 +18,13 @@ provider "azurerm" {
 
 locals {
   name_base = "${var.resource_prefix}-${var.environment}"
+}
+
+# -- Random ID for uniqueness -──────────────────────────────────────────────────────────────
+
+resource "random_string" "suffix" {
+  length  = 5
+  special = false
 }
 
 # ── Resource Group ──────────────────────────────────────────────────────────────
@@ -36,7 +47,7 @@ resource "azurerm_service_plan" "plan" {
 # ── Web App ─────────────────────────────────────────────────────────────────────
 
 resource "azurerm_linux_web_app" "app" {
-  name                = "${local.name_base}-app"
+  name                = "${local.name_base}-app-${random_string.suffix.result}"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_service_plan.plan.location
   service_plan_id     = azurerm_service_plan.plan.id
