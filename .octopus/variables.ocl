@@ -1,8 +1,4 @@
 variable "Project.WebApp.DeploymentSlot" {
-    value "production" {
-        channel = ["default"]
-    }
-
     value "feature" {
         channel = ["ephemeral-environments"]
     }
