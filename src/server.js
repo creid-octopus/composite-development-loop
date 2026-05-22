@@ -1,15 +1,36 @@
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Build info — injected by CI/Octopus as environment variables
+// Read the .build-env file stamped by the CI "Write build metadata" step into a
+// plain object. Returns an empty object locally (file won't exist in dev).
+// Keys are: APP_VERSION, APP_BRANCH, APP_BUILD, APP_DEPLOYED_AT, APP_COMMIT_SHA.
+function readBuildEnv() {
+  const envPath = path.join(__dirname, ".build-env");
+  if (!fs.existsSync(envPath)) return {};
+  const result = {};
+  for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    result[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
+  }
+  return result;
+}
+
+// Build-time values — stamped into .build-env by CI, read directly from the file.
+// Runtime config (APP_ENV, PORT) comes from Azure App Settings / process.env.
+const buildEnv = readBuildEnv();
 const buildInfo = {
-  version:     process.env.APP_VERSION     || "0.0.0-local",
-  environment: process.env.APP_ENV         || "local",
-  branch:      process.env.APP_BRANCH      || "unknown",
-  buildNumber: process.env.APP_BUILD       || "local",
-  deployedAt:  process.env.APP_DEPLOYED_AT || new Date().toISOString(),
-  commitSha:   process.env.APP_COMMIT_SHA  || "unknown",
+  version:     buildEnv.APP_VERSION     || "0.0.0-local",
+  environment: process.env.APP_ENV      || "local",
+  branch:      buildEnv.APP_BRANCH      || "unknown",
+  buildNumber: buildEnv.APP_BUILD       || "local",
+  deployedAt:  buildEnv.APP_DEPLOYED_AT || new Date().toISOString(),
+  commitSha:   buildEnv.APP_COMMIT_SHA  || "unknown",
 };
 
 // Env → banner colour mapping (makes it obvious what you're looking at)
