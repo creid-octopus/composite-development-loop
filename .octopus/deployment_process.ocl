@@ -14,7 +14,7 @@ step "deploy-an-azure-app-service" {
             Octopus.Action.Package.PackageId = "devloop-demo-app"
             OctopusUseBundledTooling = "False"
         }
-        worker_pool = "azure-worker-pool"
+        worker_pool = "hosted-ubuntu"
 
         container {
             feed = "docker-hub"
