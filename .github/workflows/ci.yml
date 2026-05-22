@@ -1,0 +1,80 @@
+# Continuous integration — runs on every push and pull request.
+#
+# This job proves the code builds and packages correctly. It has no knowledge
+# of Octopus Deploy and produces no side-effects outside this repository.
+# Think of it as an always-on dry run: if this passes, the code is publishable.
+#
+# For Octopus integration (pushing packages, creating releases, deploying) see
+# publish.yml — that workflow runs on main merges or manual dispatch.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# ── Workflow-level environment variables ────────────────────────────────────────
+env:
+  OCTOPUS_PACKAGE: devloop-demo-app
+  VERSION_MAJOR: "1"
+  VERSION_MINOR: "0"
+
+jobs:
+  build:
+    name: Build & package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Step 1: Compute version and build flags ──────────────────────────────
+      # Same versioning logic used by publish.yml so CI and release packages are
+      # stamped consistently. On main: 1.0.<run>. On any other branch: 0.0.0-<slug>.<run>.
+      - name: Compute build metadata
+        id: meta
+        run: |
+          BRANCH="$GITHUB_REF_NAME"
+
+          if [[ "$BRANCH" == "main" ]]; then
+            VERSION="${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ github.run_number }}"
+          else
+            SAFE_BRANCH=$(echo "$BRANCH" | sed 's|[^a-zA-Z0-9]|-|g' | tr '[:upper:]' '[:lower:]')
+            VERSION="0.0.0-${SAFE_BRANCH}.${{ github.run_number }}"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH"   >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: Set up Node ──────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: src/package.json
+
+      # ── Step 3: Install dependencies ────────────────────────────────────────
+      - name: Install dependencies
+        working-directory: src
+        run: npm ci --omit=dev
+
+      # ── Step 4: Stamp build metadata ────────────────────────────────────────
+      # Produces the same .build-env that a real publish would include, so the
+      # resulting package is representative of what would be shipped.
+      - name: Write build metadata
+        run: |
+          cat > src/.build-env <<EOF
+          APP_VERSION=${{ steps.meta.outputs.version }}
+          APP_BRANCH=${{ steps.meta.outputs.branch }}
+          APP_BUILD=${{ github.run_number }}
+          APP_DEPLOYED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          APP_COMMIT_SHA=${{ github.sha }}
+          EOF
+
+      # ── Step 5: Package ──────────────────────────────────────────────────────
+      # Zip is produced but not pushed anywhere — existence of the file proves
+      # the packaging step works end-to-end without needing Octopus to be set up.
+      - name: Package app
+        run: |
+          PKG_NAME="${{ env.OCTOPUS_PACKAGE }}.${{ steps.meta.outputs.version }}.zip"
+          cd src && zip -r "../$PKG_NAME" . -x "*.test.*" "*.spec.*"
+          echo "Built: $PKG_NAME ($(du -sh ../$PKG_NAME | cut -f1))"
