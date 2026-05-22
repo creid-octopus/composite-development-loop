@@ -1,0 +1,33 @@
+step "deploy-an-azure-app-service" {
+    name = "Deploy an Azure App Service"
+    properties = {
+        Octopus.Action.TargetRoles = "development-loop"
+    }
+
+    action {
+        action_type = "Octopus.AzureAppService"
+        properties = {
+            Octopus.Action.Azure.DeploymentType = "Package"
+            Octopus.Action.EnabledFeatures = "Octopus.Features.ConfigurationVariables,Octopus.Features.JsonConfigurationVariables,Octopus.Features.ConfigurationTransforms,Octopus.Features.SubstituteInFiles,Octopus.Features.CustomScripts"
+            Octopus.Action.Package.DownloadOnTentacle = "False"
+            Octopus.Action.Package.FeedId = "octopus-server-built-in"
+            Octopus.Action.Package.PackageId = "devloop-demo-app"
+            OctopusUseBundledTooling = "False"
+        }
+        worker_pool = "azure-worker-pool"
+
+        container {
+            feed = "docker-hub"
+            image = "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04"
+        }
+
+        packages {
+            acquisition_location = "Server"
+            feed = "octopus-server-built-in"
+            package_id = "devloop-demo-app"
+            properties = {
+                SelectionMode = "immediate"
+            }
+        }
+    }
+}
