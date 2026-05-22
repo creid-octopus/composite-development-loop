@@ -6,6 +6,4 @@ variable "Project.WebApp.DeploymentSlot" {
     value "feature" {
         channel = ["ephemeral-environments"]
     }
-
-    value {}
 }
