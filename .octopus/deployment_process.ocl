@@ -7,6 +7,7 @@ step "deploy-an-azure-app-service" {
     action {
         action_type = "Octopus.AzureAppService"
         properties = {
+            Octopus.Action.Azure.DeploymentSlot = "#{Project.WebApp.DeploymentSlot}"
             Octopus.Action.Azure.DeploymentType = "Package"
             Octopus.Action.EnabledFeatures = "Octopus.Features.ConfigurationVariables,Octopus.Features.JsonConfigurationVariables,Octopus.Features.ConfigurationTransforms,Octopus.Features.SubstituteInFiles,Octopus.Features.CustomScripts"
             Octopus.Action.Package.DownloadOnTentacle = "False"
