@@ -8,3 +8,11 @@ variable "Project.WebApp.DeploymentSlot" {
         description = ""
     }
 }
+
+variable "Octopus.Azure.Account" {
+    type = "AzureAccount"
+
+    value "tenants-azure-subscription" {
+        description = ""
+    }
+}
