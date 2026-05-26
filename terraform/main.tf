@@ -18,6 +18,12 @@ provider "azurerm" {
 
 locals {
   name_base = "${var.resource_prefix}-${var.environment}"
+  # Enable cloud target discovery for Octopus
+  cloud_target_discovery_tags = {
+    "octopus-environment" = "Development"
+    "octopus-role" = "development-loop"
+    "octopus-project" = "Composite Development Loop"
+  }
 }
 
 # -- Random ID for uniqueness -──────────────────────────────────────────────────────────────
@@ -66,6 +72,7 @@ resource "azurerm_linux_web_app" "app" {
   }
 
   https_only = true
+  tags = local.cloud_target_discovery_tags
 }
 
 # ── Deployment Slot (feature-branch testing) ────────────────────────────────────
