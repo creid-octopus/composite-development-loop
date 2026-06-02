@@ -83,4 +83,24 @@ process {
             }
         }
     }
+
+    step "display-terraform-output-variables" {
+        name = "Display Terraform Output Variables"
+
+        action {
+            action_type = "Octopus.Script"
+            properties = {
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    Write-Highlight "Terraform Output Values:`n"
+                    #{each output in Octopus.Action[Terraform Apply - WebApp].Output.TerraformValueOutputs}
+                     Write-Highlight "`t- #{output} : #{endpoint.value}"
+                    #{/each}
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+        }
+    }
 }
