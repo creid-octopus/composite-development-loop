@@ -9,6 +9,13 @@ terraform {
       version = "~> 3.0"
     }
   }
+
+  backend "azurerm" {
+    resource_group_name  = "terraform-state"
+    storage_account_name = "octotfstate"
+    container_name       = "terraform-state"
+    key                  = "creid-devloop.tfstate"
+  }
 }
 
 provider "azurerm" {
