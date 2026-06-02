@@ -75,8 +75,7 @@ process {
                 Octopus.Action.Terraform.TemplateDirectory = "terraform/"
                 OctopusUseBundledTooling = "False"
             }
-            worker_pool = "hosted-windows"
-            worker_pool_variable = ""
+            worker_pool = "hosted-ubuntu"
 
             container {
                 feed = "docker-hub"
