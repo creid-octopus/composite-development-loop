@@ -21,8 +21,8 @@ locals {
   # Enable cloud target discovery for Octopus
   cloud_target_discovery_tags = {
     "octopus-environment" = "Development"
-    "octopus-role" = "development-loop"
-    "octopus-project" = "Composite Development Loop"
+    "octopus-role"        = "development-loop"
+    "octopus-project"     = "Composite Development Loop"
   }
 }
 
@@ -31,6 +31,10 @@ locals {
 resource "random_string" "suffix" {
   length  = 5
   special = false
+  # Ensure that we retain this between runs so that the web app name doesn't change on every apply
+  keepers = {
+    environment = var.environment
+  }
 }
 
 # ── Resource Group ──────────────────────────────────────────────────────────────
@@ -67,12 +71,12 @@ resource "azurerm_linux_web_app" "app" {
 
   app_settings = {
     # Populated by Octopus during deployment
-    APP_ENV         = var.environment
+    APP_ENV                  = var.environment
     WEBSITE_RUN_FROM_PACKAGE = "1"
   }
 
   https_only = true
-  tags = local.cloud_target_discovery_tags
+  tags       = local.cloud_target_discovery_tags
 }
 
 # ── Deployment Slot (feature-branch testing) ────────────────────────────────────
@@ -89,7 +93,7 @@ resource "azurerm_linux_web_app_slot" "feature" {
   }
 
   app_settings = {
-    APP_ENV         = "${var.environment}-feature"
+    APP_ENV                  = "${var.environment}-feature"
     WEBSITE_RUN_FROM_PACKAGE = "1"
   }
 
