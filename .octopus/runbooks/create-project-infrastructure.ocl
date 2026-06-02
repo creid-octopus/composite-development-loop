@@ -96,8 +96,8 @@ process {
             properties = {
                 Octopus.Action.Script.ScriptBody = <<-EOT
                     Write-Highlight "Terraform Output Values:`n"
-                    #{each output in Octopus.Action[Terraform Apply - WebApp].Output.TerraformValueOutputs}
-                     Write-Highlight "`t- #{output} : #{endpoint.value}"
+                    #{each tfoutput in Octopus.Action[Terraform Apply - WebApp].Output.TerraformValueOutputs}
+                     Write-Highlight "`t- #{tfoutput} : #{tfoutput.value}"
                     #{/each}
                     EOT
                 Octopus.Action.Script.ScriptSource = "Inline"
