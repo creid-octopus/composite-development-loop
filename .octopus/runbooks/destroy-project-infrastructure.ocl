@@ -13,35 +13,6 @@ run_retention_policy {
 }
 
 process {
-    step "plan-to-destroy-a-terraform-template" {
-        name = "Terraform Plan - WebApp"
-
-        action "terraform-plan-webapp" {
-            action_type = "Octopus.TerraformPlan"
-            properties = {
-                Octopus.Action.AzureAccount.Variable = "Octopus.Azure.Account"
-                Octopus.Action.GitRepository.Source = "Project"
-                Octopus.Action.GoogleCloud.ImpersonateServiceAccount = "False"
-                Octopus.Action.GoogleCloud.UseVMServiceAccount = "True"
-                Octopus.Action.Script.ScriptSource = "GitRepository"
-                Octopus.Action.Terraform.AllowPluginDownloads = "True"
-                Octopus.Action.Terraform.AzureAccount = "True"
-                Octopus.Action.Terraform.GoogleCloudAccount = "False"
-                Octopus.Action.Terraform.ManagedAccount = "None"
-                Octopus.Action.Terraform.PlanJsonOutput = "False"
-                Octopus.Action.Terraform.RunAutomaticFileSubstitution = "True"
-                Octopus.Action.Terraform.TemplateDirectory = "terraform/"
-                OctopusUseBundledTooling = "False"
-            }
-            worker_pool = "hosted-ubuntu"
-
-            container {
-                feed = "docker-hub"
-                image = "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04"
-            }
-        }
-    }
-
     step "manual-intervention-required" {
         condition = "Variable"
         name = "Approve Terraform WebApp Plan"
