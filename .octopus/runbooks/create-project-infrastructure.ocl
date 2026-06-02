@@ -1,0 +1,15 @@
+name = "Create Project Infrastructure"
+cancel_queued_tasks = true
+cancel_running_tasks = true
+default_guided_failure_mode = "EnvironmentDefault"
+description = "Runs terraform commands from the [repository context](https://github.com/creid-octopus/composite-development-loop/tree/main/terraform) to ensure prerequisite deployment targets exist."
+
+connectivity_policy {
+    allow_deployments_to_no_targets = true
+}
+
+run_retention_policy {
+    type = "Default"
+}
+
+process {}
