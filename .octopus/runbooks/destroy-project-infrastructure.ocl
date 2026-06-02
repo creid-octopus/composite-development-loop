@@ -13,9 +13,38 @@ run_retention_policy {
 }
 
 process {
+    step "plan-terraform-destroy-webapp" {
+        name = "Plan Terraform destroy - WebApp"
+
+        action {
+            action_type = "Octopus.TerraformPlanDestroy"
+            properties = {
+                Octopus.Action.AzureAccount.Variable = "Octopus.Azure.Account"
+                Octopus.Action.GitRepository.Source = "Project"
+                Octopus.Action.GoogleCloud.ImpersonateServiceAccount = "False"
+                Octopus.Action.GoogleCloud.UseVMServiceAccount = "True"
+                Octopus.Action.Script.ScriptSource = "GitRepository"
+                Octopus.Action.Terraform.AllowPluginDownloads = "True"
+                Octopus.Action.Terraform.AzureAccount = "True"
+                Octopus.Action.Terraform.GoogleCloudAccount = "False"
+                Octopus.Action.Terraform.ManagedAccount = "None"
+                Octopus.Action.Terraform.PlanJsonOutput = "False"
+                Octopus.Action.Terraform.RunAutomaticFileSubstitution = "True"
+                Octopus.Action.Terraform.TemplateDirectory = "terraform/"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+
+            container {
+                feed = "docker-hub"
+                image = "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04"
+            }
+        }
+    }
+
     step "manual-intervention-required" {
         condition = "Variable"
-        name = "Approve Terraform WebApp Plan"
+        name = "Approve Terraform WebApp Destroy Plan"
         properties = {
             Octopus.Step.ConditionVariableExpression = "#{Project.Terraform.PlanHasChanges}"
         }
@@ -24,8 +53,37 @@ process {
             action_type = "Octopus.Manual"
             properties = {
                 Octopus.Action.Manual.BlockConcurrentDeployments = "False"
-                Octopus.Action.Manual.Instructions = "#{Octopus.Action[Terraform Plan - WebApp].Output.TerraformPlanOutput}"
+                Octopus.Action.Manual.Instructions = "#{Octopus.Action[Plan Terraform destroy - WebApp].Output.TerraformPlanOutput}"
                 Octopus.Action.RunOnServer = "false"
+            }
+        }
+    }
+
+    step "destroy-terraform-resources" {
+        name = "Destroy Terraform resources"
+
+        action {
+            action_type = "Octopus.TerraformDestroy"
+            properties = {
+                Octopus.Action.AzureAccount.Variable = "Octopus.Azure.Account"
+                Octopus.Action.GitRepository.Source = "Project"
+                Octopus.Action.GoogleCloud.ImpersonateServiceAccount = "False"
+                Octopus.Action.GoogleCloud.UseVMServiceAccount = "True"
+                Octopus.Action.Script.ScriptSource = "GitRepository"
+                Octopus.Action.Terraform.AllowPluginDownloads = "True"
+                Octopus.Action.Terraform.AzureAccount = "True"
+                Octopus.Action.Terraform.GoogleCloudAccount = "False"
+                Octopus.Action.Terraform.ManagedAccount = "None"
+                Octopus.Action.Terraform.PlanJsonOutput = "False"
+                Octopus.Action.Terraform.RunAutomaticFileSubstitution = "True"
+                Octopus.Action.Terraform.TemplateDirectory = "terraform/"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+
+            container {
+                feed = "docker-hub"
+                image = "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04"
             }
         }
     }
