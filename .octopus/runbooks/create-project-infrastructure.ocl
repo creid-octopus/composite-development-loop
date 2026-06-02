@@ -14,9 +14,9 @@ run_retention_policy {
 
 process {
     step "plan-to-apply-a-terraform-template" {
-        name = "Plan to apply a Terraform template"
+        name = "Terraform Plan - WebApp"
 
-        action {
+        action "terraform-plan-webapp" {
             action_type = "Octopus.TerraformPlan"
             properties = {
                 Octopus.Action.AzureAccount.Variable = "Octopus.Azure.Account"
@@ -43,22 +43,22 @@ process {
     }
 
     step "manual-intervention-required" {
-        name = "Manual Intervention Required"
+        name = "Approve Terraform WebApp Plan"
 
-        action {
+        action "approve-terraform-webapp-plan" {
             action_type = "Octopus.Manual"
             properties = {
                 Octopus.Action.Manual.BlockConcurrentDeployments = "False"
-                Octopus.Action.Manual.Instructions = "Check Terraform Plan output and proceed"
+                Octopus.Action.Manual.Instructions = "#{Octopus.Action[Terraform Plan - WebApp].Output.TerraformPlanOutput}"
                 Octopus.Action.RunOnServer = "false"
             }
         }
     }
 
     step "apply-a-terraform-template" {
-        name = "Apply a Terraform template"
+        name = "Terraform Apply - WebApp"
 
-        action {
+        action "terraform-apply-webapp" {
             action_type = "Octopus.TerraformApply"
             properties = {
                 Octopus.Action.AzureAccount.Variable = "Octopus.Azure.Account"
