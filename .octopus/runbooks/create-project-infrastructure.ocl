@@ -43,7 +43,11 @@ process {
     }
 
     step "manual-intervention-required" {
+        condition = "Variable"
         name = "Approve Terraform WebApp Plan"
+        properties = {
+            Octopus.Step.ConditionVariableExpression = "#{Project.Terraform.PlanHasChanges}"
+        }
 
         action "approve-terraform-webapp-plan" {
             action_type = "Octopus.Manual"
