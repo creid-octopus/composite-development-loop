@@ -36,7 +36,7 @@ process {
             worker_pool = "hosted-ubuntu"
 
             container {
-                feed = "artifactory-dockerhub-mirror"
+                feed = "docker-hub"
                 image = "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04"
             }
         }
@@ -50,6 +50,7 @@ process {
             properties = {
                 Octopus.Action.Manual.BlockConcurrentDeployments = "False"
                 Octopus.Action.Manual.Instructions = "Check Terraform Plan output and proceed"
+                Octopus.Action.RunOnServer = "false"
             }
         }
     }
@@ -78,7 +79,7 @@ process {
             worker_pool_variable = ""
 
             container {
-                feed = "artifactory-dockerhub-mirror"
+                feed = "docker-hub"
                 image = "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04"
             }
         }
