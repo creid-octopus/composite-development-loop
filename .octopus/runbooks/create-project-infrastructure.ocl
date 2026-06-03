@@ -62,7 +62,11 @@ process {
     }
 
     step "apply-a-terraform-template" {
+        condition = "Variable"
         name = "Terraform Apply - WebApp"
+        properties = {
+            Octopus.Step.ConditionVariableExpression = "#{Project.Terraform.PlanHasChanges}"
+        }
 
         action "terraform-apply-webapp" {
             action_type = "Octopus.TerraformApply"
