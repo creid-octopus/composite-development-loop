@@ -1,0 +1,151 @@
+name = "Create Project Infrastructure"
+cancel_queued_tasks = true
+cancel_running_tasks = true
+default_guided_failure_mode = "EnvironmentDefault"
+description = "Runs terraform commands from the [repository context](https://github.com/creid-octopus/composite-development-loop/tree/main/terraform) to ensure prerequisite deployment targets exist."
+environment_scope = "FromProjectLifecycles"
+
+connectivity_policy {
+    allow_deployments_to_no_targets = true
+}
+
+run_retention_policy {
+    type = "Default"
+}
+
+process {
+    step "plan-to-apply-a-terraform-template" {
+        name = "Terraform Plan - WebApp"
+
+        action "terraform-plan-webapp" {
+            action_type = "Octopus.TerraformPlan"
+            properties = {
+                Octopus.Action.AzureAccount.Variable = "Octopus.Azure.Account"
+                Octopus.Action.GitRepository.Source = "Project"
+                Octopus.Action.GoogleCloud.ImpersonateServiceAccount = "False"
+                Octopus.Action.GoogleCloud.UseVMServiceAccount = "True"
+                Octopus.Action.Script.ScriptSource = "GitRepository"
+                Octopus.Action.Terraform.AdditionalActionParams = "-target=#{Project.Terraform.StateTarget} -var-file=octopus.tfvars"
+                Octopus.Action.Terraform.AllowPluginDownloads = "True"
+                Octopus.Action.Terraform.AzureAccount = "True"
+                Octopus.Action.Terraform.GoogleCloudAccount = "False"
+                Octopus.Action.Terraform.ManagedAccount = "None"
+                Octopus.Action.Terraform.PlanJsonOutput = "False"
+                Octopus.Action.Terraform.RunAutomaticFileSubstitution = "True"
+                Octopus.Action.Terraform.TemplateDirectory = "terraform/"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+
+            container {
+                feed = "docker-hub"
+                image = "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04"
+            }
+        }
+    }
+
+    step "manual-intervention-required" {
+        condition = "Variable"
+        name = "Approve Terraform WebApp Plan"
+        properties = {
+            Octopus.Step.ConditionVariableExpression = "#{Project.Terraform.PlanHasChanges}"
+        }
+
+        action "approve-terraform-webapp-plan" {
+            action_type = "Octopus.Manual"
+            properties = {
+                Octopus.Action.Manual.BlockConcurrentDeployments = "False"
+                Octopus.Action.Manual.Instructions = "#{Octopus.Action[Terraform Plan - WebApp].Output.TerraformPlanOutput}"
+                Octopus.Action.RunOnServer = "false"
+            }
+        }
+    }
+
+    step "apply-a-terraform-template" {
+        name = "Terraform Apply - WebApp"
+
+        action "terraform-apply-webapp" {
+            action_type = "Octopus.TerraformApply"
+            properties = {
+                Octopus.Action.AzureAccount.Variable = "Octopus.Azure.Account"
+                Octopus.Action.GitRepository.Source = "Project"
+                Octopus.Action.GoogleCloud.ImpersonateServiceAccount = "False"
+                Octopus.Action.GoogleCloud.UseVMServiceAccount = "True"
+                Octopus.Action.Script.ScriptSource = "GitRepository"
+                Octopus.Action.Terraform.AdditionalActionParams = "-target=#{Project.Terraform.StateTarget} -var-file=octopus.tfvars"
+                Octopus.Action.Terraform.AllowPluginDownloads = "True"
+                Octopus.Action.Terraform.AzureAccount = "True"
+                Octopus.Action.Terraform.GoogleCloudAccount = "False"
+                Octopus.Action.Terraform.ManagedAccount = "None"
+                Octopus.Action.Terraform.PlanJsonOutput = "False"
+                Octopus.Action.Terraform.RunAutomaticFileSubstitution = "True"
+                Octopus.Action.Terraform.TemplateDirectory = "terraform/"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+
+            container {
+                feed = "docker-hub"
+                image = "octopusdeploy/worker-tools:6.5.0-ubuntu.22.04"
+            }
+        }
+    }
+
+    step "display-terraform-output-variables" {
+        name = "Display Terraform Output Variables"
+
+        action {
+            action_type = "Octopus.Script"
+            properties = {
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    $OctopusUrl = $OctopusParameters["OctopusApi.Url"]
+                    $OctopusApiKey = $OctopusParameters["OctopusApi.ApiKey"]
+                    
+                    # Get our current context
+                    # Coalesce deployment.id >> runbookrun.id, as only one of these will be populated depending on the context of the script
+                    $targetVariableSetId = if ($OctopusParameters["Octopus.Deployment.Id"]) { $OctopusParameters["Octopus.Deployment.Id"] } else { $OctopusParameters["Octopus.RunbookRun.Id"] }
+                    
+                    # Full URL string is variableset- followed by the ID from above
+                    $targetVariableSetString = "VariableSet-$targetVariableSetId"
+                    
+                    # Build the API URL
+                    $apiUrl = "$OctopusUrl/api/$($OctopusParameters["Octopus.Space.Id"])/variables/$targetVariableSetString"
+                    
+                    # Call and get the JSON
+                    $variableSet = Invoke-RestMethod -Uri $apiUrl -Headers @{ "X-Octopus-ApiKey" = "$OctopusApiKey" }
+                    
+                    # Regular expression pattern to match the desired format
+                    $pattern = 'Octopus\.Action\[.+?\]\.Output\.TerraformValueOutputs\[(.+?)\]'
+                    
+                    # Grab any values in the variable set that match the pattern
+                    $terraformOutputValues = $variableSet.Variables | Where-Object { $_.Name -match $pattern } | Select-Object -ExpandProperty Name
+                    
+                    Write-Host "Found the following Terraform output variables in the variable set:"
+                    
+                    # Pull the values and names out of any matches
+                    foreach ($output in $terraformOutputValues) {
+                        # Extract the variable name using the regex pattern
+                        $($output -match $pattern) | Out-Null; $variableName = $matches[1]
+                    
+                        # Pull the value for the variable from the variable set, using the full name to find it
+                        $variableValue = $variableSet.Variables | Where-Object { $_.Name -eq $output } | Select-Object -ExpandProperty Value
+                    
+                        if ($variableName -like '*url*') {
+                            # Wrap in markdown link if we have a URL, to make it clickable in the output
+                            $formattedValue = "[$variableValue]($variableValue)"
+                        }
+                        else {
+                            $formattedValue = $variableValue
+                        }
+                    
+                        Write-Highlight "- $variableName`: $formattedValue"
+                    }
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+        }
+    }
+}

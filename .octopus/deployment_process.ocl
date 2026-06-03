@@ -1,3 +1,29 @@
+step "run-infrastructure-runbook" {
+    name = "Run Infrastructure Runbook"
+
+    action {
+        properties = {
+            Octopus.Action.Template.Id = "ActionTemplates-6021"
+            Octopus.Action.Template.Version = "19"
+            Run.Runbook.Api.Key = "#{OctopusApi.ApiKey}"
+            Run.Runbook.AutoApproveManualInterventions = "No"
+            Run.Runbook.Base.Url = "#{Octopus.Web.ServerUri}"
+            Run.Runbook.CancelInSeconds = "1800"
+            Run.Runbook.CustomNotes.Toggle = "False"
+            Run.Runbook.DateTime = "N/A"
+            Run.Runbook.Environment.Name = "#{Octopus.Environment.Name}"
+            Run.Runbook.Machines = "N/A"
+            Run.Runbook.ManualIntervention.EnvironmentToUse = "#{Octopus.Environment.Name}"
+            Run.Runbook.Name = "Create Project Infrastructure"
+            Run.Runbook.Project.Name = "#{Octopus.Project.Name}"
+            Run.Runbook.Space.Name = "#{Octopus.Space.Name}"
+            Run.Runbook.UsePublishedSnapShot = "True"
+            Run.Runbook.Waitforfinish = "True"
+        }
+        worker_pool = "hosted-ubuntu"
+    }
+}
+
 step "deploy-an-azure-app-service" {
     name = "Deploy an Azure App Service"
     properties = {
