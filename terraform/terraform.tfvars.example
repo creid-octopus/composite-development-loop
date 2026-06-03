@@ -1,7 +1,10 @@
-# Copy to terraform.tfvars and adjust for your environment.
-# terraform.tfvars is gitignored — don't commit real values.
+# Copy to local.tfvars for local testing (gitignored).
+# Adjust values to match your Azure subscription and naming preferences.
+#
+# environment is NOT a variable here — it is hardcoded per module instance
+# in main.tf. Use -target to work with a single environment at a time:
+#   terraform apply -var-file=local.tfvars -target=module.web_app_dev
 
-environment     = "test"
-location        = "East US 2"
-resource_prefix = "creid-devloop"
-sku_name        = "P1v2"
+location        = "Central US"
+resource_prefix = "yourprefix-devloop"
+sku_name        = "S1"
