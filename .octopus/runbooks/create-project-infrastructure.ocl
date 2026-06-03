@@ -105,11 +105,15 @@ process {
                     # Coalesce deployment.id >> runbookrun.id, as only one of these will be populated depending on the context of the script
                     $targetVariableSetId = if ($OctopusParameters["Octopus.Deployment.Id"]) { $OctopusParameters["Octopus.Deployment.Id"] } else { $OctopusParameters["Octopus.RunbookRun.Id"] }
                     
+                    Write-Verbose "Target ID is $targetVariableSetId"
+                    
                     # Full URL string is variableset- followed by the ID from above
                     $targetVariableSetString = "VariableSet-$targetVariableSetId"
                     
                     # Build the API URL
                     $apiUrl = "$OctopusUrl/api/$($OctopusParameters["Octopus.Space.Id"])/variables/$targetVariableSetString"
+                    
+                    Write-Verbose "Calling $apiUrl to get variable manifest"
                     
                     # Call and get the JSON
                     $variableSet = Invoke-RestMethod -Uri $apiUrl -Headers @{ "X-Octopus-ApiKey" = "$OctopusApiKey" }
@@ -120,7 +124,7 @@ process {
                     # Grab any values in the variable set that match the pattern
                     $terraformOutputValues = $variableSet.Variables | Where-Object { $_.Name -match $pattern } | Select-Object -ExpandProperty Name
                     
-                    Write-Host "Found the following Terraform output variables in the variable set:"
+                    Write-Highlight "Found the following Terraform output variables in the variable set:"
                     
                     # Pull the values and names out of any matches
                     foreach ($output in $terraformOutputValues) {
