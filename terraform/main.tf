@@ -26,11 +26,11 @@ provider "azurerm" {
 # ── Development environment ──────────────────────────────────────────────────────
 # Standalone resource group, app service plan, web app, and feature slot.
 # Environment label and Octopus discovery tags are computed inside the module.
-# Target individually: terraform apply -target=module.web_app_dev
+# Target individually: terraform apply -target=module.web_app_development
 
-module "web_app_dev" {
+module "web_app_development" {
   source          = "./module"
-  environment     = "dev"
+  environment     = "development"
   location        = var.location
   resource_prefix = var.resource_prefix
   sku_name        = var.sku_name
