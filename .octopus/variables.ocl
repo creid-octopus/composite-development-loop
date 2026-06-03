@@ -20,3 +20,7 @@ variable "Octopus.Azure.Account" {
 variable "Project.Terraform.PlanHasChanges" {
     value "#{unless Octopus.Action[Terraform Plan - WebApp].Output.TerraformPlanDetailedExitCode == \"2\" }false#{/if}" {}
 }
+
+variable "Project.Terraform.StateTarget" {
+    value "module.web_app_#{Octopus.Environment.Name}" {}
+}
