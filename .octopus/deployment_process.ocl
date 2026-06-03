@@ -2,6 +2,7 @@ step "run-infrastructure-runbook" {
     name = "Run Infrastructure Runbook"
 
     action {
+        notes = "Runs [Create Project Infrastructure](https://demo.octopus.app/app#/Spaces-3705/projects/composite-development-loop/operations/runbooks/create-project-infrastructure/runslist?gitRef=refs%2Fheads%2Ffeature%2Foverlapping-slot-deployment) runbook to ensure any needed Terraform runs are complete prior to deployment."
         properties = {
             Octopus.Action.Template.Id = "ActionTemplates-6021"
             Octopus.Action.Template.Version = "19"
@@ -24,6 +25,34 @@ step "run-infrastructure-runbook" {
     }
 }
 
+step "update-launchdarkly-flag-configurations" {
+    name = "Update LaunchDarkly Flag Configurations"
+
+    action {
+        action_type = "Octopus.Manual"
+        notes = "Pause deployment to allow for any LaunchDarkly flags to be altered. "
+        properties = {
+            Octopus.Action.Manual.BlockConcurrentDeployments = "False"
+            Octopus.Action.Manual.Instructions = "Check the application release manifest for any needed flag changes."
+            Octopus.Action.RunOnServer = "false"
+        }
+    }
+}
+
+step "run-liquibase-migrations" {
+    name = "Run Liquibase Migrations"
+
+    action {
+        action_type = "Octopus.Manual"
+        notes = "Run Liquibase migrations prior to deployment of application code."
+        properties = {
+            Octopus.Action.Manual.BlockConcurrentDeployments = "False"
+            Octopus.Action.Manual.Instructions = "Check the application release manifest for any needed Liquibase migrations prior to deployment of application code."
+            Octopus.Action.RunOnServer = "false"
+        }
+    }
+}
+
 step "deploy-an-azure-app-service" {
     name = "Deploy an Azure App Service"
     properties = {
@@ -32,6 +61,7 @@ step "deploy-an-azure-app-service" {
 
     action {
         action_type = "Octopus.AzureAppService"
+        notes = "Deploys a Node.js application to Azure Web App. Details for the web app are visible in the infrastructure project runbook(s)."
         properties = {
             Octopus.Action.Azure.DeploymentSlot = "#{Project.WebApp.DeploymentSlot}"
             Octopus.Action.Azure.DeploymentType = "Package"

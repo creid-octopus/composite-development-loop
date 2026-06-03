@@ -19,6 +19,7 @@ process {
 
         action "terraform-plan-webapp" {
             action_type = "Octopus.TerraformPlan"
+            notes = "Runs `terraform plan` from the specified directory. Uses `-target=#{Project.Terraform.StateTarget}` and `-var-file=octopus.tfvars` to customize the plan run using [project variables](https://demo.octopus.app/app#/Spaces-3705/projects/composite-development-loop/variables)."
             properties = {
                 Octopus.Action.AzureAccount.Variable = "Octopus.Azure.Account"
                 Octopus.Action.GitRepository.Source = "Project"
@@ -53,6 +54,7 @@ process {
 
         action "approve-terraform-webapp-plan" {
             action_type = "Octopus.Manual"
+            notes = "Outputs the plan from the `terraform plan` step and waits for approval before applying. Runs only when the plan step indicates changes (`#{Project.Terraform.PlanHasChanges}`)"
             properties = {
                 Octopus.Action.Manual.BlockConcurrentDeployments = "False"
                 Octopus.Action.Manual.Instructions = "#{Octopus.Action[Terraform Plan - WebApp].Output.TerraformPlanOutput}"
@@ -62,10 +64,15 @@ process {
     }
 
     step "apply-a-terraform-template" {
+        condition = "Variable"
         name = "Terraform Apply - WebApp"
+        properties = {
+            Octopus.Step.ConditionVariableExpression = "#{Project.Terraform.PlanHasChanges}"
+        }
 
         action "terraform-apply-webapp" {
             action_type = "Octopus.TerraformApply"
+            notes = "Runs `terraform apply` from the specified directory. Uses `-target=#{Project.Terraform.StateTarget}` and `-var-file=octopus.tfvars` to customize the apply run command using [project variables](https://demo.octopus.app/app#/Spaces-3705/projects/composite-development-loop/variables). Runs only when the plan step indicates changes (`#{Project.Terraform.PlanHasChanges}`)"
             properties = {
                 Octopus.Action.AzureAccount.Variable = "Octopus.Azure.Account"
                 Octopus.Action.GitRepository.Source = "Project"
@@ -92,10 +99,15 @@ process {
     }
 
     step "display-terraform-output-variables" {
+        condition = "Variable"
         name = "Display Terraform Output Variables"
+        properties = {
+            Octopus.Step.ConditionVariableExpression = "#{Project.Terraform.PlanHasChanges}"
+        }
 
         action {
             action_type = "Octopus.Script"
+            notes = "Queries the Octopus API to output the Terraform output values from the apply. Runs only when the plan step indicates changes (`#{Project.Terraform.PlanHasChanges}`)"
             properties = {
                 Octopus.Action.Script.ScriptBody = <<-EOT
                     $OctopusUrl = $OctopusParameters["OctopusApi.Url"]
@@ -105,11 +117,15 @@ process {
                     # Coalesce deployment.id >> runbookrun.id, as only one of these will be populated depending on the context of the script
                     $targetVariableSetId = if ($OctopusParameters["Octopus.Deployment.Id"]) { $OctopusParameters["Octopus.Deployment.Id"] } else { $OctopusParameters["Octopus.RunbookRun.Id"] }
                     
+                    Write-Verbose "Target ID is $targetVariableSetId"
+                    
                     # Full URL string is variableset- followed by the ID from above
                     $targetVariableSetString = "VariableSet-$targetVariableSetId"
                     
                     # Build the API URL
                     $apiUrl = "$OctopusUrl/api/$($OctopusParameters["Octopus.Space.Id"])/variables/$targetVariableSetString"
+                    
+                    Write-Verbose "Calling $apiUrl to get variable manifest"
                     
                     # Call and get the JSON
                     $variableSet = Invoke-RestMethod -Uri $apiUrl -Headers @{ "X-Octopus-ApiKey" = "$OctopusApiKey" }
@@ -120,7 +136,7 @@ process {
                     # Grab any values in the variable set that match the pattern
                     $terraformOutputValues = $variableSet.Variables | Where-Object { $_.Name -match $pattern } | Select-Object -ExpandProperty Name
                     
-                    Write-Host "Found the following Terraform output variables in the variable set:"
+                    Write-Highlight "Found the following Terraform output variables in the variable set:"
                     
                     # Pull the values and names out of any matches
                     foreach ($output in $terraformOutputValues) {

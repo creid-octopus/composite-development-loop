@@ -1,0 +1,228 @@
+# Unified build pipeline — handles both feature branches and main releases.
+#
+# Branch behaviour:
+#   feature/**  →  pre-release package (0.0.0-<slug>.<run>), Octopus release created, no auto-deploy
+#   main        →  stable release (1.0.<run>), Octopus release created, auto-deployed to Test
+#
+# Required GitHub secrets (Settings → Secrets and variables → Actions → Secrets):
+#   OCTOPUS_SERVER_URL  – e.g. https://your-instance.octopus.app
+#   OCTOPUS_API_KEY     – service account key with package push + release create permissions
+#
+# Required GitHub variables (Settings → Secrets and variables → Actions → Variables):
+#   OCTOPUS_PROJECT     – Octopus project name, e.g. "devloop-demo"
+
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+
+  # Allows manual execution from the Actions tab in GitHub (any branch).
+  # Useful for re-running a build without pushing a new commit, or testing
+  # pipeline changes before merging them.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run — build and package only, skip all Octopus steps"
+        type: boolean
+        default: false
+        required: false
+
+# ── Workflow-level environment variables ────────────────────────────────────────
+# These are available to every step in every job.
+# VERSION_MAJOR / VERSION_MINOR are bumped manually when the public API changes;
+# the patch segment is always the GitHub run number so it auto-increments.
+env:
+  OCTOPUS_PACKAGE: devloop-demo-app
+  VERSION_MAJOR: "1"
+  VERSION_MINOR: "0"
+
+jobs:
+  build:
+    name: Build & publish
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out the repository at the commit that triggered this run.
+      - uses: actions/checkout@v6
+
+      # ── Step 1: Compute version and build flags ──────────────────────────────
+      # This is the branch-routing logic. It runs a small bash script that sets
+      # four output variables consumed by later steps:
+      #
+      #   version       – semver string, e.g. "1.0.42" or "0.0.0-feature-foo.42"
+      #   branch        – raw branch name, e.g. "feature/my-story"
+      #   overwrite_mode – FailIfExists (main) | OverwriteExisting (feature)
+      #                    Controls what happens if a package with this version
+      #                    already exists in Octopus. Stable releases should never
+      #                    overwrite; feature builds can because the version is
+      #                    effectively "latest on this branch".
+      #   is_release    – "true" only on main; gates the Deploy to Test step below.
+      #
+      # GITHUB_REF_NAME is a built-in GHA variable containing just the branch name
+      # (not the full refs/heads/... path), so it's safe to compare directly.
+      - name: Compute build metadata
+        id: meta
+        run: |
+          BRANCH="$GITHUB_REF_NAME"
+
+          if [[ "$BRANCH" == "main" ]]; then
+            # Stable release: 1.0.<run_number>
+            VERSION="${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ github.run_number }}"
+            OVERWRITE_MODE="FailIfExists"
+            IS_RELEASE="true"
+          else
+            # Pre-release: sanitise the branch name into a valid semver pre-release label.
+            # e.g. "feature/my-story" → "0.0.0-feature-my-story.42"
+            SAFE_BRANCH=$(echo "$BRANCH" | sed 's|[^a-zA-Z0-9]|-|g' | tr '[:upper:]' '[:lower:]')
+            VERSION="0.0.0-${SAFE_BRANCH}.${{ github.run_number }}"
+            OVERWRITE_MODE="OverwriteExisting"
+            IS_RELEASE="false"
+          fi
+
+          # Write outputs to the special GHA file that makes them available
+          # to later steps as $ {{ steps.meta.outputs.<key> }}
+          echo "version=$VERSION"                   >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH"                     >> "$GITHUB_OUTPUT"
+          echo "overwrite_mode=$OVERWRITE_MODE"     >> "$GITHUB_OUTPUT"
+          echo "is_release=$IS_RELEASE"             >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: Set up Node ──────────────────────────────────────────────────
+      # Installs Node 24 (Active LTS) and restores the npm cache keyed on
+      # package.json so clean installs don't re-download everything each run.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: src/package.json
+
+      # ── Step 3: Install dependencies ────────────────────────────────────────
+      # `npm ci` is preferred over `npm install` in CI: it installs exactly what's
+      # in package-lock.json and fails if there's a mismatch. --omit=dev skips
+      # devDependencies since we're building for production.
+      - name: Install dependencies
+        working-directory: src
+        run: npm ci --omit=dev
+
+      # ── Step 4: Stamp build metadata ────────────────────────────────────────
+      # Writes a .build-env file that the Express app reads at startup to populate
+      # the deployment dashboard (version, branch, commit SHA, deploy timestamp).
+      # This file is gitignored — it only exists inside the built package.
+      - name: Write build metadata
+        run: |
+          cat > src/.build-env <<EOF
+          APP_VERSION=${{ steps.meta.outputs.version }}
+          APP_BRANCH=${{ steps.meta.outputs.branch }}
+          APP_BUILD=${{ github.run_number }}
+          APP_DEPLOYED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          APP_COMMIT_SHA=${{ github.sha }}
+          EOF
+
+      # ── Step 5: Package ──────────────────────────────────────────────────────
+      # Zips the src/ directory into a file Octopus can consume directly.
+      # Test/spec files are excluded — they have no place in a deployable package.
+      # The output variable pkg_path carries the filename to the push step below.
+      - name: Package app
+        id: package
+        run: |
+          PKG_NAME="${{ env.OCTOPUS_PACKAGE }}.${{ steps.meta.outputs.version }}.zip"
+          cd src && zip -r "../$PKG_NAME" . -x "*.test.*" "*.spec.*"
+          echo "pkg_path=$PKG_NAME" >> "$GITHUB_OUTPUT"
+
+      # ── Step 6: Dry run summary (skipped on normal runs) ────────────────────
+      # When dry_run is true, print everything that *would* have been sent to
+      # Octopus — package name, version, overwrite mode, release number, and
+      # whether a deploy would have been triggered. Nothing is pushed or created.
+      # This step is skipped entirely on push-triggered runs and on manual
+      # dispatches where dry_run is false.
+      - name: Dry run summary
+        if: inputs.dry_run == true
+        run: |
+          echo "╔══════════════════════════════════════════════════╗"
+          echo "║              DRY RUN — nothing pushed            ║"
+          echo "╚══════════════════════════════════════════════════╝"
+          echo ""
+          echo "  Package name   : ${{ env.OCTOPUS_PACKAGE }}"
+          echo "  Package file   : ${{ steps.package.outputs.pkg_path }}"
+          echo "  Version        : ${{ steps.meta.outputs.version }}"
+          echo "  Branch         : ${{ steps.meta.outputs.branch }}"
+          echo "  Commit SHA     : ${{ github.sha }}"
+          echo "  Overwrite mode : ${{ steps.meta.outputs.overwrite_mode }}"
+          echo "  Is release     : ${{ steps.meta.outputs.is_release }}"
+          echo "  Octopus project: ${{ vars.OCTOPUS_PROJECT }}"
+          echo ""
+          if [[ "${{ steps.meta.outputs.is_release }}" == "true" ]]; then
+            echo "  Deploy step    : WOULD run → environment: Test"
+          else
+            echo "  Deploy step    : WOULD skip (feature branch — manual deploy in Octopus)"
+          fi
+          echo ""
+          echo "  Re-run without dry_run to push for real."
+
+      # ── Step 6: Push package to Octopus ─────────────────────────────────────
+      # Uploads the zip to the Octopus built-in feed (or an external feed if
+      # your instance is configured for one). overwrite_mode comes from step 1:
+      #   main     → FailIfExists    (safe — a stable version should never change)
+      #   feature  → OverwriteExisting (fine — pre-release versions are mutable)
+      - name: Push package to Octopus
+        if: inputs.dry_run != true
+        uses: OctopusDeploy/push-package-action@v4
+        with:
+          server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE}}
+          api_key: ${{ secrets.OCTOPUS_API_KEY }}
+          packages: ${{ steps.package.outputs.pkg_path }}
+          overwrite_mode: ${{ steps.meta.outputs.overwrite_mode }}
+
+      # ── Step 7: Push build information ──────────────────────────────────────
+      # Sends commit metadata (SHA, branch, run number) to Octopus so it can
+      # display them in the release and deployment screens — useful for tracing
+      # a deployment back to the exact commit that produced it.
+      - name: Push build information
+        if: inputs.dry_run != true
+        uses: OctopusDeploy/push-build-information-action@v4
+        with:
+          server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE}}
+          api_key: ${{ secrets.OCTOPUS_API_KEY }}
+          packages: ${{ env.OCTOPUS_PACKAGE }}
+          version: ${{ steps.meta.outputs.version }}
+
+      # ── Step 8: Create Octopus release ──────────────────────────────────────
+      # Creates a release in Octopus for the computed version. Both feature and
+      # main builds get a release — the difference is what happens next (step 9).
+      # OCTOPUS_PROJECT is a repository variable (not a secret) so it's readable
+      # in logs and easy to change without touching this file.
+      - name: Create Octopus release
+        if: inputs.dry_run != true
+        uses: OctopusDeploy/create-release-action@v4
+        with:
+          server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE}}
+          api_key: ${{ secrets.OCTOPUS_API_KEY }}
+          project: ${{ vars.OCTOPUS_PROJECT }}
+          # If we're not on main, deploy to the ephemeral environment channel
+          channel: ${{ steps.meta.outputs.is_release == 'true' && 'Default' || 'Ephemeral Environments' }}
+          git_ref: ${{ (github.ref_type == 'tag' && github.event.repository.default_branch ) || (github.head_ref || github.ref) }}
+          git_commit: ${{ github.event.after || github.event.pull_request.head.sha }}
+          package_version: ${{ steps.meta.outputs.version }}
+          release_number: ${{ steps.meta.outputs.version }}
+
+      # ── Step 9: Deploy to Test (main only) ──────────────────────────────────
+      # This step is skipped entirely for feature branches (is_release == false).
+      # Feature deployments are intentionally manual in Octopus — they're a
+      # separate, composable activity from the mainline release process.
+      # Promotion from Test → Staging → Prod is controlled by the Octopus lifecycle,
+      # not by additional steps here.
+      - name: Deploy to Test
+        if: inputs.dry_run != true && steps.meta.outputs.is_release == 'true'
+        uses: OctopusDeploy/deploy-release-action@v4
+        with:
+          server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE}}
+          api_key: ${{ secrets.OCTOPUS_API_KEY }}
+          project: ${{ vars.OCTOPUS_PROJECT }}
+          release_number: ${{ steps.meta.outputs.version }}
+          environments: Development
