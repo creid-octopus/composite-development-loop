@@ -61,6 +61,7 @@ step "deploy-an-azure-app-service" {
 
     action {
         action_type = "Octopus.AzureAppService"
+        notes = "Deploys a Node.js application to Azure Web App. Details for the web app are visible in the infrastructure project runbook(s)."
         properties = {
             Octopus.Action.Azure.DeploymentSlot = "#{Project.WebApp.DeploymentSlot}"
             Octopus.Action.Azure.DeploymentType = "Package"
