@@ -2,6 +2,7 @@ step "run-infrastructure-runbook" {
     name = "Run Infrastructure Runbook"
 
     action {
+        notes = "Runs [Create Project Infrastructure](https://demo.octopus.app/app#/Spaces-3705/projects/composite-development-loop/operations/runbooks/create-project-infrastructure/runslist?gitRef=refs%2Fheads%2Ffeature%2Foverlapping-slot-deployment) runbook to ensure any needed Terraform runs are complete prior to deployment."
         properties = {
             Octopus.Action.Template.Id = "ActionTemplates-6021"
             Octopus.Action.Template.Version = "19"
