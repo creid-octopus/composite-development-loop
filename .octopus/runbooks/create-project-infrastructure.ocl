@@ -3,6 +3,7 @@ cancel_queued_tasks = true
 cancel_running_tasks = true
 default_guided_failure_mode = "EnvironmentDefault"
 description = "Runs terraform commands from the [repository context](https://github.com/creid-octopus/composite-development-loop/tree/main/terraform) to ensure prerequisite deployment targets exist."
+environment_scope = "FromProjectLifecycles"
 
 connectivity_policy {
     allow_deployments_to_no_targets = true
@@ -24,6 +25,7 @@ process {
                 Octopus.Action.GoogleCloud.ImpersonateServiceAccount = "False"
                 Octopus.Action.GoogleCloud.UseVMServiceAccount = "True"
                 Octopus.Action.Script.ScriptSource = "GitRepository"
+                Octopus.Action.Terraform.AdditionalActionParams = "-target=#{Project.Terraform.StateTarget}"
                 Octopus.Action.Terraform.AllowPluginDownloads = "True"
                 Octopus.Action.Terraform.AzureAccount = "True"
                 Octopus.Action.Terraform.GoogleCloudAccount = "False"
@@ -70,6 +72,7 @@ process {
                 Octopus.Action.GoogleCloud.ImpersonateServiceAccount = "False"
                 Octopus.Action.GoogleCloud.UseVMServiceAccount = "True"
                 Octopus.Action.Script.ScriptSource = "GitRepository"
+                Octopus.Action.Terraform.AdditionalActionParams = "-target=#{Project.Terraform.StateTarget}"
                 Octopus.Action.Terraform.AllowPluginDownloads = "True"
                 Octopus.Action.Terraform.AzureAccount = "True"
                 Octopus.Action.Terraform.GoogleCloudAccount = "False"
