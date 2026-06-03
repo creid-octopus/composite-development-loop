@@ -98,6 +98,9 @@ process {
             action_type = "Octopus.Script"
             properties = {
                 Octopus.Action.Script.ScriptBody = <<-EOT
+                    $OctopusUrl = $OctopusParameters["OctopusApi.Url"]
+                    $OctopusApiKey = $OctopusParameters["OctopusApi.ApiKey"]
+                    
                     # Get our current context
                     # Coalesce deployment.id >> runbookrun.id, as only one of these will be populated depending on the context of the script
                     $targetVariableSetId = if ($OctopusParameters["Octopus.Deployment.Id"]) { $OctopusParameters["Octopus.Deployment.Id"] } else { $OctopusParameters["Octopus.RunbookRun.Id"] }
