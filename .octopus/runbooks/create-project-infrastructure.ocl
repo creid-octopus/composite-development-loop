@@ -98,13 +98,45 @@ process {
             action_type = "Octopus.Script"
             properties = {
                 Octopus.Action.Script.ScriptBody = <<-EOT
-                    Write-Highlight "Terraform Output Values:`n"
-                    #{each output in Octopus.Action[Terraform Apply - WebApp].Output.TerraformValueOutputs}
-                    Write-Highlight "key: #{output.key}"
-                    Write-Highlight "id: #{output.id}"
+                    # Get our current context
+                    # Coalesce deployment.id >> runbookrun.id, as only one of these will be populated depending on the context of the script
+                    $targetVariableSetId = if ($OctopusParameters["Octopus.Deployment.Id"]) { $OctopusParameters["Octopus.Deployment.Id"] } else { $OctopusParameters["Octopus.RunbookRun.Id"] }
                     
-                     Write-Highlight "`t- #{Octopus.Template.Each.Index} : #{output}"
-                    #{/each}
+                    # Full URL string is variableset- followed by the ID from above
+                    $targetVariableSetString = "VariableSet-$targetVariableSetId"
+                    
+                    # Build the API URL
+                    $apiUrl = "$OctopusUrl/api/$($OctopusParameters["Octopus.Space.Id"])/variables/$targetVariableSetString"
+                    
+                    # Call and get the JSON
+                    $variableSet = Invoke-RestMethod -Uri $apiUrl -Headers @{ "X-Octopus-ApiKey" = "$OctopusApiKey" }
+                    
+                    # Regular expression pattern to match the desired format
+                    $pattern = 'Octopus\.Action\[.+?\]\.Output\.TerraformValueOutputs\[(.+?)\]'
+                    
+                    # Grab any values in the variable set that match the pattern
+                    $terraformOutputValues = $variableSet.Variables | Where-Object { $_.Name -match $pattern } | Select-Object -ExpandProperty Name
+                    
+                    Write-Host "Found the following Terraform output variables in the variable set:"
+                    
+                    # Pull the values and names out of any matches
+                    foreach ($output in $terraformOutputValues) {
+                        # Extract the variable name using the regex pattern
+                        $($output -match $pattern) | Out-Null; $variableName = $matches[1]
+                    
+                        # Pull the value for the variable from the variable set, using the full name to find it
+                        $variableValue = $variableSet.Variables | Where-Object { $_.Name -eq $output } | Select-Object -ExpandProperty Value
+                    
+                        if ($variableName -like '*url*') {
+                            # Wrap in markdown link if we have a URL, to make it clickable in the output
+                            $formattedValue = "[$variableValue]($variableValue)"
+                        }
+                        else {
+                            $formattedValue = $variableValue
+                        }
+                    
+                        Write-Highlight "- $variableName`: $formattedValue"
+                    }
                     EOT
                 Octopus.Action.Script.ScriptSource = "Inline"
                 Octopus.Action.Script.Syntax = "PowerShell"
