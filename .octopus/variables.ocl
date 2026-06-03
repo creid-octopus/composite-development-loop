@@ -24,3 +24,7 @@ variable "Project.Terraform.PlanHasChanges" {
 variable "Project.Terraform.StateTarget" {
     value "module.web_app_#{Octopus.Environment.Name | ToLower} " {}
 }
+
+variable "Project.ResourcePrefix" {
+    value "creid-devloop" {}
+}
