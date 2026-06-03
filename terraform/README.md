@@ -1,6 +1,6 @@
 # terraform/
 
-Provisions two isolated Azure environments (`dev` and `test`) for the devloop demo. Each environment is a self-contained module instance with its own resource group, App Service Plan, Web App, and feature deployment slot.
+Provisions two isolated Azure environments (`development` and `test`) for the devloop demo. Each environment is a self-contained module instance with its own resource group, App Service Plan, Web App, and feature deployment slot.
 
 This directory demonstrates **two valid approaches** to multi-environment Terraform — both backed by the same reusable module in `module/`. The approach you use depends on how your pipeline is structured.
 
@@ -11,8 +11,8 @@ This directory demonstrates **two valid approaches** to multi-environment Terraf
 Both environments live in a single Terraform root and a single state file. `-target` controls which environment is touched on a given apply. This mirrors a common customer pattern where infrastructure for multiple environments lives together and targeted applies avoid unintended state changes.
 
 ```bash
-# Touch only dev
-terraform apply -var-file=local.tfvars -target=module.web_app_dev
+# Touch only development
+terraform apply -var-file=local.tfvars -target=module.web_app_development
 
 # Touch only test
 terraform apply -var-file=local.tfvars -target=module.web_app_test
@@ -52,12 +52,12 @@ Both roots source the same `../../module`, so the infrastructure definition stay
 
 ## What gets created (per environment)
 
-| Resource | dev | test |
+| Resource | development | test |
 |---|---|---|
-| Resource Group | `<prefix>-dev` | `<prefix>-test` |
-| App Service Plan | `<prefix>-dev-plan` | `<prefix>-test-plan` |
-| Web App | `<prefix>-dev-app-<suffix>` | `<prefix>-test-app-<suffix>` |
-| Feature Slot | `<prefix>-dev-app-<suffix>/feature` | `<prefix>-test-app-<suffix>/feature` |
+| Resource Group | `<prefix>-development` | `<prefix>-test` |
+| App Service Plan | `<prefix>-development-plan` | `<prefix>-test-plan` |
+| Web App | `<prefix>-development-app-<suffix>` | `<prefix>-test-app-<suffix>` |
+| Feature Slot | `<prefix>-development-app-<suffix>/feature` | `<prefix>-test-app-<suffix>/feature` |
 
 The random suffix is stable across re-applies (keyed on environment label).
 
@@ -89,18 +89,18 @@ Each environment root has its own backend state key and must be initialised inde
 
 ```
 webapp_configuration = {
-  dev = {
-    app_name            = "creid-devloop-dev-app-ab1cd"
-    app_url             = "https://creid-devloop-dev-app-ab1cd.azurewebsites.net"
-    resource_group_name = "creid-devloop-dev"
-    slot_url            = "https://creid-devloop-dev-app-ab1cd-feature.azurewebsites.net"
+  development = {
+    app_name            = "creid-devloop-development-app-ab1cd"
+    app_url             = "https://creid-devloop-development-app-ab1cd.azurewebsites.net"
+    resource_group_name = "creid-devloop-development"
+    slot_url            = "https://creid-devloop-development-app-ab1cd-feature.azurewebsites.net"
   }
   test = { ... }
 }
 ```
 
 ```bash
-terraform output -json webapp_configuration | jq '.dev.app_url'
+terraform output -json webapp_configuration | jq '.development.app_url'
 ```
 
 ### Environment roots
@@ -120,4 +120,4 @@ cd environments/dev && terraform output
 | `resource_prefix` | `creid-devloop` | Prefix applied to all resource names |
 | `sku_name` | `S1` | App Service Plan SKU — must support deployment slots |
 
-`environment` is not a variable in any root. It is hardcoded per module instance (`"dev"` / `"test"`) so the environment identity is structural, not runtime config.
+`environment` is not a variable in any root. It is hardcoded per module instance (`"development"` / `"test"`) so the environment identity is structural, not runtime config.

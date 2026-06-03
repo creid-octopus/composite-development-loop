@@ -6,37 +6,63 @@ Sample project for an inner development loop demo using **Octopus Deploy** and *
 
 ```
 .
-├── terraform/               # Azure infrastructure (azurerm)
-│   ├── main.tf              #   Web App + feature deployment slot
+├── terraform/
+│   ├── main.tf                  # monorepo root — development + test modules, use -target
 │   ├── variables.tf
 │   ├── outputs.tf
-│   └── terraform.tfvars.example
-├── src/                     # Node.js/Express demo app
+│   ├── octopus.tfvars           # tokenized vars for Octopus CD runs
+│   ├── terraform.tfvars.example # copy to local.tfvars for local testing
+│   ├── README.md
+│   ├── module/                  # reusable module — one env per instance
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   └── README.md
+│   └── environments/            # alternative: isolated root per environment
+│       ├── dev/                 #   plain apply, no -target needed
+│       └── test/
+├── src/                         # Node.js/Express demo app
 │   ├── server.js
 │   └── package.json
 └── .github/
     └── workflows/
-        ├── ci.yml           # every push/PR → build + package, no Octopus
-        └── publish.yml      # main push → full release; manual dispatch → feature publish
+        ├── ci.yml               # every push/PR → build + package, no Octopus
+        └── publish.yml          # main push → full release; manual dispatch → feature publish
 ```
 
 ## Infrastructure
 
+Two approaches are provided — both use the same `module/` definition. See `terraform/README.md` for the full breakdown and tradeoffs.
+
+**Monorepo root with `-target`** (mirrors a common customer pattern):
+
 ```bash
 cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# edit terraform.tfvars as needed
+cp terraform.tfvars.example local.tfvars
+# edit local.tfvars — set resource_prefix and location
 terraform init
-terraform apply
+terraform apply -var-file=local.tfvars -target=module.web_app_development
+terraform apply -var-file=local.tfvars -target=module.web_app_test
 ```
 
-Terraform creates a resource group, an App Service Plan, a Linux Web App, and a **feature** deployment slot on the same app — so feature-branch builds deploy without needing a second app instance.
-
-After `apply`, check outputs for the URLs:
+**Separate environment roots** (directory is the targeting mechanism):
 
 ```bash
-terraform output app_url          # production slot
-terraform output feature_slot_url # feature slot
+cd terraform/environments/dev
+terraform init && terraform apply -var-file=octopus.tfvars
+```
+
+Each environment provisions a resource group, App Service Plan, Linux Web App, and a **feature** deployment slot — so feature-branch builds deploy without needing a second app instance.
+
+After apply, check outputs:
+
+```bash
+# Monorepo root
+terraform output -json webapp_configuration | jq '.development.app_url'
+terraform output -json webapp_configuration | jq '.test.app_url'
+
+# Environment root
+cd terraform/environments/dev && terraform output
 ```
 
 ## Running locally
@@ -47,7 +73,7 @@ npm install
 npm run dev          # uses node --watch for live reload
 ```
 
-The app reads build metadata from environment variables (set by CI) and falls back to sensible local defaults. Visit `http://localhost:3000` to see the deployment dashboard.
+The app reads build metadata from `.build-env` (stamped by CI) and falls back to sensible local defaults when the file isn't present. Visit `http://localhost:3000` to see the deployment dashboard.
 
 ## Branch → deployment flow
 
@@ -70,10 +96,16 @@ Each layer adds a composable deployment activity in Octopus without changing the
 |---|---|
 | `OCTOPUS_SERVER_URL` | Your Octopus instance URL |
 | `OCTOPUS_API_KEY` | Service account API key with package push + release create permissions |
+| `OCTOPUS_SPACE` | Octopus space name or ID |
 
 ## Teardown
 
 ```bash
+# Monorepo root — tear down one environment
 cd terraform
-terraform destroy
+terraform destroy -var-file=local.tfvars -target=module.web_app_development
+
+# Environment root — tear down in isolation
+cd terraform/environments/dev
+terraform destroy -var-file=octopus.tfvars
 ```
