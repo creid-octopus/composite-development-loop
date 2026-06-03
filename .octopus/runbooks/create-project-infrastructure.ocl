@@ -96,7 +96,11 @@ process {
     }
 
     step "display-terraform-output-variables" {
+        condition = "Variable"
         name = "Display Terraform Output Variables"
+        properties = {
+            Octopus.Step.ConditionVariableExpression = "#{Project.Terraform.PlanHasChanges}"
+        }
 
         action {
             action_type = "Octopus.Script"
