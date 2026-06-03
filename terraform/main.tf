@@ -9,6 +9,13 @@ terraform {
       version = "~> 3.0"
     }
   }
+
+  backend "azurerm" {
+    resource_group_name  = "terraform-state"
+    storage_account_name = "octotfstate"
+    container_name       = "terraform-state"
+    key                  = "creid-devloop.tfstate"
+  }
 }
 
 provider "azurerm" {
@@ -16,86 +23,27 @@ provider "azurerm" {
   features {}
 }
 
-locals {
-  name_base = "${var.resource_prefix}-${var.environment}"
-  # Enable cloud target discovery for Octopus
-  cloud_target_discovery_tags = {
-    "octopus-environment" = "Development"
-    "octopus-role"        = "development-loop"
-    "octopus-project"     = "Composite Development Loop"
-  }
+# ── Development environment ──────────────────────────────────────────────────────
+# Standalone resource group, app service plan, web app, and feature slot.
+# Environment label and Octopus discovery tags are computed inside the module.
+# Target individually: terraform apply -target=module.web_app_development
+
+module "web_app_development" {
+  source          = "./module"
+  environment     = "development"
+  location        = var.location
+  resource_prefix = var.resource_prefix
+  sku_name        = var.sku_name
 }
 
-# -- Random ID for uniqueness -──────────────────────────────────────────────────────────────
+# ── Test environment ─────────────────────────────────────────────────────────────
+# Stable environment — mainline releases auto-deploy here via Octopus.
+# Target individually: terraform apply -target=module.web_app_test
 
-resource "random_string" "suffix" {
-  length  = 5
-  special = false
-  # Ensure that we retain this between runs so that the web app name doesn't change on every apply
-  keepers = {
-    environment = var.environment
-  }
-}
-
-# ── Resource Group ──────────────────────────────────────────────────────────────
-
-resource "azurerm_resource_group" "rg" {
-  name     = local.name_base
-  location = var.location
-}
-
-# ── App Service Plan ────────────────────────────────────────────────────────────
-
-resource "azurerm_service_plan" "plan" {
-  name                = "${local.name_base}-plan"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  os_type             = "Linux"
-  sku_name            = var.sku_name
-}
-
-# ── Web App ─────────────────────────────────────────────────────────────────────
-
-resource "azurerm_linux_web_app" "app" {
-  name                = "${local.name_base}-app-${random_string.suffix.result}"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_service_plan.plan.location
-  service_plan_id     = azurerm_service_plan.plan.id
-
-  site_config {
-    application_stack {
-      node_version = "24-lts"
-    }
-    always_on = true
-  }
-
-  app_settings = {
-    # Populated by Octopus during deployment
-    APP_ENV                  = var.environment
-    WEBSITE_RUN_FROM_PACKAGE = "1"
-  }
-
-  https_only = true
-  tags       = local.cloud_target_discovery_tags
-}
-
-# ── Deployment Slot (feature-branch testing) ────────────────────────────────────
-
-resource "azurerm_linux_web_app_slot" "feature" {
-  name           = "feature"
-  app_service_id = azurerm_linux_web_app.app.id
-
-  site_config {
-    application_stack {
-      node_version = "24-lts"
-    }
-    always_on = true
-  }
-
-  app_settings = {
-    APP_ENV                  = "${var.environment}-feature"
-    WEBSITE_RUN_FROM_PACKAGE = "1"
-  }
-
-  https_only = true
+module "web_app_test" {
+  source          = "./module"
+  environment     = "test"
+  location        = var.location
+  resource_prefix = var.resource_prefix
+  sku_name        = var.sku_name
 }
