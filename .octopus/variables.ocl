@@ -21,10 +21,16 @@ variable "Project.ResourcePrefix" {
     value "creid-devloop" {}
 }
 
-variable "Project.Terraform.PlanHasChanges" {
-    value "#{if Octopus.Action[Terraform Plan - WebApp].Output.TerraformPlanDetailedExitCode == \"2\" }true#{/if}" {}
-}
-
 variable "Project.Terraform.StateTarget" {
     value "module.web_app_#{Octopus.Environment.Name | ToLower}" {}
+}
+
+variable "Project.Terraform.PlanHasChanges" {
+    value "#{if Octopus.Action[Terraform Plan - WebApp].Output.TerraformPlanDetailedExitCode == \"2\" }true#{/if}" {
+        process = ["runbook/create-project-infrastructure"]
+    }
+
+    value "#{if Octopus.Action[Plan Terraform destroy - WebApp].Output.TerraformPlanDetailedExitCode == \"2\" }true#{/if}" {
+        process = ["runbook/destroy-project-infrastructure"]
+    }
 }
