@@ -136,6 +136,6 @@ jobs:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
           space: ${{ secrets.OCTOPUS_SPACE }}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
-          packages: ${{ steps.package.outputs.package_filename }}
+          packages: '${{ env.OCTOPUS_PACKAGE }}:${{ steps.meta.outputs.version }}'
           project: "Package and Variable Testing"
           channel: ${{ inputs.octopus_channel }}
