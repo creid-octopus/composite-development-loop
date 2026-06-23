@@ -22,6 +22,15 @@ name: Testbed Package
 on:
   workflow_dispatch:
     inputs:
+      octopus_channel:
+        description: "Octopus channel name to associate with the release — must exist in the target project"
+        required: true
+        type: choice
+        options:
+          - Default
+          - Hotfix
+          - Fast Track
+        default: "Default"
       bump:
         description: "Version segment to increment — ignored if version_override is set"
         type: choice
@@ -114,3 +123,16 @@ jobs:
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
           packages: ${{ steps.package.outputs.pkg_path }}
           overwrite_mode: OverwriteExisting
+
+      # ── Step 4: Create release in Octopus ─────────────────────────────────────
+      # Pushes to the built-in feed with OverwriteExisting so you can re-push
+      # the same version if you need to update the package contents mid-scenario.
+      - name: Create release in Octopus
+        uses: OctopusDeploy/create-release-action@v4
+        with:
+          server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE }}
+          api_key: ${{ secrets.OCTOPUS_API_KEY }}
+          packages: ${{ steps.package.outputs.pkg_path }}
+          project: "Package and Variable Testing"
+          channel: ${{ inputs.octopus_channel }}
