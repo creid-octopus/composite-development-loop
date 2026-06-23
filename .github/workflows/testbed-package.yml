@@ -139,6 +139,4 @@ jobs:
           packages: '${{ env.OCTOPUS_PACKAGE }}:${{ steps.meta.outputs.version }}'
           project: "Package and Variable Testing"
           channel: ${{ inputs.octopus_channel }}
-          # Compound release version string here ensures even when we push overwritten packages,
-          # the release version is always unique and never reused. 
-          release_number: '${{ steps.meta.outputs.version }}-${{ github.run_number }}'
+          release_number: '${{ steps.meta.outputs.version }}'
