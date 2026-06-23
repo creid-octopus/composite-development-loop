@@ -1,15 +1,14 @@
 # Release pipeline — pushes packages to Octopus and manages releases.
 #
 # Trigger behaviour:
-#   main (push)       →  stable release (1.0.<run>), auto-deployed to Development
-#   workflow_dispatch →  manual publish from any branch; feature branches produce
-#                        pre-release packages (0.0.0-<slug>.<run>) and create a
-#                        release in Octopus without auto-deploying — deploy from
-#                        the Octopus UI when you're ready.
+#   main (push, src/** only)       →  stable release (1.0.<run>), auto-deployed to Development
+#   feature/** (push, src/** only) →  pre-release (0.0.0-<slug>.<run>), release created in
+#                                     Octopus but NOT auto-deployed — deploy from the UI when ready
+#   workflow_dispatch              →  manual publish from any branch; path filter does not apply
 #
-# This workflow intentionally does NOT trigger on plain feature branch pushes.
-# Feature slot deployments are a separate, composable activity: push when you
-# want to test, not on every commit.
+# Pushes that only touch non-app files (terraform/, .octopus/, etc.) do NOT trigger
+# this workflow — the paths filter ensures a release is only created when application
+# code actually changed.
 #
 # Required GitHub secrets (Settings → Secrets and variables → Actions → Secrets):
 #   OCTOPUS_SERVER_URL  – e.g. https://your-instance.octopus.app
@@ -25,10 +24,14 @@ on:
   push:
     branches:
       - main
+      - "feature/**"
+    paths:
+      - "src/**"
 
-  # Manual dispatch — use this to push a feature branch to Octopus when you're
-  # ready to test it in the feature deployment slot. Select the branch from the
-  # "Run workflow" dropdown in the Actions tab.
+  # Manual dispatch — use this to publish any branch to Octopus regardless of
+  # what changed. Useful for re-triggering a release, testing pipeline changes,
+  # or publishing a branch that only had non-src changes. Select the branch from
+  # the "Run workflow" dropdown in the Actions tab.
   workflow_dispatch:
     inputs:
       dry_run:
