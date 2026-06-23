@@ -1,0 +1,116 @@
+# Testbed package workflow — ad-hoc package push to Octopus for scenario testing.
+#
+# Produces a minimal octopus_base_package zip and pushes it to the Octopus built-in
+# feed. No release is created — wire this package to a separate Octopus project and
+# manage releases there manually.
+#
+# Versioning:
+#   - bump (major/minor/patch) increments the corresponding segment of the base
+#     version stored in octopus_base_package/VERSION. The VERSION file is NOT
+#     updated automatically — edit it manually when you want to advance the base.
+#   - prerelease_tag appends a label (e.g. "hotfix" → 1.0.1-hotfix)
+#   - version_override bypasses bump/tag entirely and uses the exact string you
+#     provide. Use this for specific scenario testing (e.g. "7.0.4-superspecifictest").
+#
+# Required GitHub secrets:
+#   OCTOPUS_SERVER_URL  – Octopus instance URL
+#   OCTOPUS_API_KEY     – API key with package push permissions
+#   OCTOPUS_SPACE       – Space name or ID
+
+name: Testbed Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version segment to increment — ignored if version_override is set"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+        required: true
+      prerelease_tag:
+        description: "Pre-release label appended to the version (e.g. 'hotfix', 'rc1') — leave blank for a stable version"
+        type: string
+        required: false
+        default: ""
+      version_override:
+        description: "Exact version string — bypasses bump and prerelease_tag entirely (e.g. '1.0.1' or '7.0.4-superspecifictest')"
+        type: string
+        required: false
+        default: ""
+
+env:
+  OCTOPUS_PACKAGE: octopus_base_package
+
+jobs:
+  publish:
+    name: Package & push
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Step 1: Compute version ──────────────────────────────────────────────
+      # If version_override is provided, use it directly.
+      # Otherwise, read the base version from VERSION, apply the selected bump,
+      # and optionally append the prerelease tag.
+      #
+      # The VERSION file is the source of truth for the base and is NOT written
+      # back after a bump — edit it manually to advance the base (e.g. 1.0.x → 1.1.0).
+      - name: Compute version
+        id: meta
+        run: |
+          OVERRIDE="${{ inputs.version_override }}"
+
+          if [[ -n "$OVERRIDE" ]]; then
+            VERSION="$OVERRIDE"
+            echo "Version override in use: $VERSION"
+          else
+            CURRENT=$(cat octopus_base_package/VERSION | tr -d '[:space:]')
+            MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+            MINOR=$(echo "$CURRENT" | cut -d. -f2)
+            PATCH=$(echo "$CURRENT" | cut -d. -f3)
+
+            case "${{ inputs.bump }}" in
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              patch) PATCH=$((PATCH + 1)) ;;
+            esac
+
+            VERSION="${MAJOR}.${MINOR}.${PATCH}"
+
+            PRERELEASE="${{ inputs.prerelease_tag }}"
+            if [[ -n "$PRERELEASE" ]]; then
+              VERSION="${VERSION}-${PRERELEASE}"
+            fi
+
+            echo "Bumped $CURRENT → $VERSION (bump: ${{ inputs.bump }})"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: Package ──────────────────────────────────────────────────────
+      # Zip the contents of octopus_base_package/ — VERSION is excluded since
+      # it is a local tooling file, not part of the deployable package.
+      - name: Package
+        id: package
+        run: |
+          PKG_NAME="${{ env.OCTOPUS_PACKAGE }}.${{ steps.meta.outputs.version }}.zip"
+          cd octopus_base_package && zip -r "../$PKG_NAME" . -x "VERSION"
+          echo "pkg_path=$PKG_NAME" >> "$GITHUB_OUTPUT"
+          echo "Packaged: $PKG_NAME ($(du -sh ../$PKG_NAME | cut -f1))"
+
+      # ── Step 3: Push package to Octopus ─────────────────────────────────────
+      # Pushes to the built-in feed with OverwriteExisting so you can re-push
+      # the same version if you need to update the package contents mid-scenario.
+      - name: Push package to Octopus
+        uses: OctopusDeploy/push-package-action@v4
+        with:
+          server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE }}
+          api_key: ${{ secrets.OCTOPUS_API_KEY }}
+          packages: ${{ steps.package.outputs.pkg_path }}
+          overwrite_mode: OverwriteExisting
