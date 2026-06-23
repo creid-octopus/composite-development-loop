@@ -104,13 +104,16 @@ jobs:
       # ── Step 2: Package ──────────────────────────────────────────────────────
       # Zip the contents of octopus_base_package/ — VERSION is excluded since
       # it is a local tooling file, not part of the deployable package.
-      - name: Package
+      - name: Create a Zip package 🐙
         id: package
-        run: |
-          PKG_NAME="${{ env.OCTOPUS_PACKAGE }}.${{ steps.meta.outputs.version }}.zip"
-          cd octopus_base_package && zip -r "../$PKG_NAME" . -x "VERSION"
-          echo "pkg_path=$PKG_NAME" >> "$GITHUB_OUTPUT"
-          echo "Packaged: $PKG_NAME ($(du -sh ../$PKG_NAME | cut -f1))"
+        uses: OctopusDeploy/create-zip-package-action@v4
+        with:
+          package_id: '${{ env.OCTOPUS_PACKAGE }}'
+          version: '${{ steps.meta.outputs.version }}'
+          output_folder: './packaging'
+          base_path: octopus_base_package
+          files: |
+            **/*.*
 
       # ── Step 3: Push package to Octopus ─────────────────────────────────────
       # Pushes to the built-in feed with OverwriteExisting so you can re-push
@@ -121,7 +124,7 @@ jobs:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
           space: ${{ secrets.OCTOPUS_SPACE }}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
-          packages: ${{ steps.package.outputs.pkg_path }}
+          packages: ${{ steps.package.outputs.package_file_path }}
           overwrite_mode: OverwriteExisting
 
       # ── Step 4: Create release in Octopus ─────────────────────────────────────
@@ -133,6 +136,6 @@ jobs:
           server: ${{ secrets.OCTOPUS_SERVER_URL }}
           space: ${{ secrets.OCTOPUS_SPACE }}
           api_key: ${{ secrets.OCTOPUS_API_KEY }}
-          packages: ${{ steps.package.outputs.pkg_path }}
+          packages: ${{ steps.package.outputs.package_filename }}
           project: "Package and Variable Testing"
           channel: ${{ inputs.octopus_channel }}
