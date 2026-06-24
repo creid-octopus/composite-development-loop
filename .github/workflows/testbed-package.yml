@@ -49,7 +49,6 @@ on:
         description: "Exact version string — bypasses bump and prerelease_tag entirely (e.g. '1.0.1' or '7.0.4-superspecifictest')"
         type: string
         required: false
-        default: ""
 
 env:
   OCTOPUS_PACKAGE: octopus_base_package
@@ -140,3 +139,4 @@ jobs:
           project: "Package and Variable Testing"
           channel: ${{ inputs.octopus_channel }}
           release_number: '${{ steps.meta.outputs.version }}'
+          custom_fields: 'GH_WORKFLOW_RUN:${{ github.run_id }}'
