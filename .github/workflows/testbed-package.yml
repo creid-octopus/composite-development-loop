@@ -126,6 +126,17 @@ jobs:
           packages: ${{ steps.package.outputs.package_file_path }}
           overwrite_mode: OverwriteExisting
 
+      # ── Step 3.a : Push build information to Octopus ─────────────────────────────────────
+      # Push build information to Octopus for traceability.
+      - uses: actions/checkout@v2
+      - name: Push build information to Octopus Deploy 🐙
+        id: push_build_information
+        uses: OctopusDeploy/push-build-information-action@v4
+        with:
+          packages: |
+            ${{ env.OCTOPUS_PACKAGE }}
+          version: '${{ steps.meta.outputs.version }}'
+
       # ── Step 4: Create release in Octopus ─────────────────────────────────────
       # Pushes to the built-in feed with OverwriteExisting so you can re-push
       # the same version if you need to update the package contents mid-scenario.
