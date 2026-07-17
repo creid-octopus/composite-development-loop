@@ -21,16 +21,19 @@ function readBuildEnv() {
   return result;
 }
 
-// Build-time values — stamped into .build-env by CI, read directly from the file.
-// Runtime config (APP_ENV, PORT) comes from Azure App Settings / process.env.
+// Build-time values — read from .build-env file (zip/Azure deployment) or from
+// ENV vars baked in at image build time (container deployment). Falls through to
+// hardcoded local defaults when neither is present.
+//
+// Precedence: .build-env file > process.env (Docker ENV) > local default
 const buildEnv = readBuildEnv();
 const buildInfo = {
-  version:     buildEnv.APP_VERSION     || "0.0.0-local",
+  version:     buildEnv.APP_VERSION     || process.env.APP_VERSION     || "0.0.0-local",
   environment: process.env.APP_ENV      || "local",
-  branch:      buildEnv.APP_BRANCH      || "unknown",
-  buildNumber: buildEnv.APP_BUILD       || "local",
-  builtAt:     buildEnv.APP_BUILT_AT    || new Date().toISOString(),
-  commitSha:   buildEnv.APP_COMMIT_SHA  || "unknown",
+  branch:      buildEnv.APP_BRANCH      || process.env.APP_BRANCH      || "unknown",
+  buildNumber: buildEnv.APP_BUILD       || process.env.APP_BUILD       || "local",
+  builtAt:     buildEnv.APP_BUILT_AT    || process.env.APP_BUILT_AT    || new Date().toISOString(),
+  commitSha:   buildEnv.APP_COMMIT_SHA  || process.env.APP_COMMIT_SHA  || "unknown",
 };
 
 // Env → banner colour mapping (makes it obvious what you're looking at)
