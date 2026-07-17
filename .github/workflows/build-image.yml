@@ -1,0 +1,191 @@
+# Container image build — builds and pushes to GHCR on src/** or Dockerfile changes.
+#
+# Trigger behaviour:
+#   main (push, src/** or Dockerfile)       → release target (distroless), stable version
+#   feature/** (push, src/** or Dockerfile) → debug target (node:24-slim), pre-release version
+#   workflow_dispatch                        → manual build from any branch; target overridable
+#
+# Versioning mirrors publish.yml:
+#   main       → 1.0.<run>            e.g. ghcr.io/org/repo:1.0.42
+#   feature/** → 0.0.0-<slug>.<run>   e.g. ghcr.io/org/repo:0.0.0-feature-foo.42
+#
+# Each push produces two tags — a semver tag and a SHA-pinned tag:
+#   :1.0.42                      — human-readable, usable in Octopus feed references
+#   :1.0.42-sha-a1b2c3d          — immutable, safe for k8s manifest pinning
+#
+# GHCR setup: no secrets to configure. GITHUB_TOKEN is granted packages: write
+# below and works out of the box. The package appears under the repo's Packages
+# tab after the first push. Visibility inherits the repo's visibility setting
+# (change it under Settings → Packages if needed).
+#
+# Provenance attestation: stable releases (main) are attested via
+# actions/attest-build-provenance and stored in GitHub's attestation store.
+# Verify with: gh attestation verify oci://<image>:<tag> --repo <owner>/<repo>
+#
+# Future: replace attestation with cosign sign for registry-agnostic signatures.
+
+name: Build image
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+    paths:
+      - "src/**"
+      - "Dockerfile"
+      - ".dockerignore"
+
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Build target — debug (node:24-slim) or release (distroless)"
+        type: choice
+        options:
+          - release
+          - debug
+        default: release
+        required: true
+      dry_run:
+        description: "Dry run — build only, skip push and attestation"
+        type: boolean
+        default: false
+        required: false
+
+permissions:
+  contents: read
+  packages: write      # push image to GHCR
+  attestations: write  # store provenance attestations
+  id-token: write      # OIDC token required by attest-build-provenance
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}   # e.g. cory/sample-webapp → ghcr.io/cory/sample-webapp
+  VERSION_MAJOR: "1"
+  VERSION_MINOR: "0"
+
+jobs:
+  build:
+    name: Build & push image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Step 1: Compute version, target, and image tags ─────────────────────
+      # Branch routing mirrors publish.yml — same version scheme, same slug logic.
+      # workflow_dispatch can override the build target (debug/release).
+      - name: Compute build metadata
+        id: meta
+        run: |
+          BRANCH="$GITHUB_REF_NAME"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          if [[ "$BRANCH" == "main" ]]; then
+            VERSION="${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ github.run_number }}"
+            BUILD_TARGET="release"
+            IS_RELEASE="true"
+          else
+            SAFE_BRANCH=$(echo "$BRANCH" | sed 's|[^a-zA-Z0-9]|-|g' | tr '[:upper:]' '[:lower:]')
+            VERSION="0.0.0-${SAFE_BRANCH}.${{ github.run_number }}"
+            BUILD_TARGET="debug"
+            IS_RELEASE="false"
+          fi
+
+          # workflow_dispatch can override the target (e.g. test a release build on a feature branch)
+          if [[ -n "${{ inputs.target }}" ]]; then
+            BUILD_TARGET="${{ inputs.target }}"
+          fi
+
+          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          echo "version=$VERSION"           >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH"             >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA"       >> "$GITHUB_OUTPUT"
+          echo "built_at=$BUILT_AT"         >> "$GITHUB_OUTPUT"
+          echo "build_target=$BUILD_TARGET" >> "$GITHUB_OUTPUT"
+          echo "is_release=$IS_RELEASE"     >> "$GITHUB_OUTPUT"
+          echo "image_ref=$IMAGE_REF"       >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: Set up Buildx ────────────────────────────────────────────────
+      # Required for BuildKit features: multi-stage caching and GHA cache backend.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Step 3: Log in to GHCR ──────────────────────────────────────────────
+      # Uses the built-in GITHUB_TOKEN — no secret to configure.
+      # Skipped on dry runs (nothing to push, no auth needed).
+      - name: Log in to GHCR
+        if: inputs.dry_run != true
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Step 4: Build (and push) ─────────────────────────────────────────────
+      # Build args are baked to ENV in the Dockerfile. server.js reads them via
+      # process.env fallback — no .build-env file needed in the image.
+      #
+      # provenance: false — disables BuildKit's inline provenance manifest so we
+      # get a stable single-platform digest. GitHub attestation is handled in
+      # step 5 via actions/attest-build-provenance instead.
+      - name: Build and push image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ inputs.dry_run != true }}
+          target: ${{ steps.meta.outputs.build_target }}
+          tags: |
+            ${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}-sha-${{ steps.meta.outputs.short_sha }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            APP_BRANCH=${{ steps.meta.outputs.branch }}
+            APP_BUILD=${{ github.run_number }}
+            APP_BUILT_AT=${{ steps.meta.outputs.built_at }}
+            APP_COMMIT_SHA=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.built_at }}
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Step 5: Attest build provenance ─────────────────────────────────────
+      # SLSA provenance attestation bound to the image digest, stored in GitHub's
+      # attestation store. Only runs for stable releases (main branch).
+      #
+      # Verify after push:
+      #   gh attestation verify oci://ghcr.io/<owner>/<repo>:<version> --repo <owner>/<repo>
+      - name: Attest build provenance
+        if: inputs.dry_run != true && steps.meta.outputs.is_release == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      # ── Step 6: Job summary ──────────────────────────────────────────────────
+      - name: Image summary
+        if: always()
+        run: |
+          {
+            echo "### Image — \`${{ steps.meta.outputs.version }}\`"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| **Target** | \`${{ steps.meta.outputs.build_target }}\` |"
+            echo "| **Version tag** | \`${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}\` |"
+            echo "| **SHA tag** | \`${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}-sha-${{ steps.meta.outputs.short_sha }}\` |"
+            if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+              echo "| **Digest** | \`${{ steps.push.outputs.digest }}\` |"
+              echo "| **Attested** | ${{ steps.meta.outputs.is_release == 'true' && 'yes (main release)' || 'no (pre-release)' }} |"
+            else
+              echo "| **Pushed** | dry run — skipped |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
