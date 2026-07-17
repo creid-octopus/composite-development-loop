@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Step 1: Compute version ──────────────────────────────────────────────
       # If version_override is provided, use it directly.
@@ -128,7 +128,7 @@ jobs:
 
       # ── Step 3.a : Push build information to Octopus ─────────────────────────────────────
       # Push build information to Octopus for traceability.
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
       - name: Push build information to Octopus Deploy 🐙
         id: push_build_information
         uses: OctopusDeploy/push-build-information-action@v4
