@@ -6,7 +6,7 @@ const port = process.env.PORT || 3000;
 
 // Read the .build-env file stamped by the CI "Write build metadata" step into a
 // plain object. Returns an empty object locally (file won't exist in dev).
-// Keys are: APP_VERSION, APP_BRANCH, APP_BUILD, APP_DEPLOYED_AT, APP_COMMIT_SHA.
+// Keys are: APP_VERSION, APP_BRANCH, APP_BUILD, APP_BUILT_AT, APP_COMMIT_SHA.
 function readBuildEnv() {
   const envPath = path.join(__dirname, ".build-env");
   if (!fs.existsSync(envPath)) return {};
@@ -29,7 +29,7 @@ const buildInfo = {
   environment: process.env.APP_ENV      || "local",
   branch:      buildEnv.APP_BRANCH      || "unknown",
   buildNumber: buildEnv.APP_BUILD       || "local",
-  deployedAt:  buildEnv.APP_DEPLOYED_AT || new Date().toISOString(),
+  builtAt:     buildEnv.APP_BUILT_AT    || new Date().toISOString(),
   commitSha:   buildEnv.APP_COMMIT_SHA  || "unknown",
 };
 
@@ -124,7 +124,7 @@ app.get("/", (req, res) => {
         <tr><td>Environment</td><td>${buildInfo.environment}</td></tr>
         <tr><td>Branch</td><td>${buildInfo.branch}</td></tr>
         <tr><td>Commit</td><td>${buildInfo.commitSha}</td></tr>
-        <tr><td>Deployed at</td><td>${buildInfo.deployedAt}</td></tr>
+        <tr><td>Built at</td><td>${buildInfo.builtAt}</td></tr>
         <tr><td>Build #</td><td>${buildInfo.buildNumber}</td></tr>
       </table>
     </div>
