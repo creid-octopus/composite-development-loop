@@ -1,9 +1,9 @@
 # Container image build — builds and pushes to GHCR on src/** or Dockerfile changes.
 #
 # Trigger behaviour:
-#   main (push, src/** or Dockerfile)       → release target (distroless), stable version
-#   feature/** (push, src/** or Dockerfile) → debug target (node:24-slim), pre-release version
-#   workflow_dispatch                        → manual build from any branch; target overridable
+#   main (push, src/** or Dockerfile) → release target (distroless), stable version, auto-attested
+#   workflow_dispatch                  → manual build from any branch; target overridable (use for
+#                                        feature/RC images — pick branch + debug target in the UI)
 #
 # Versioning mirrors publish.yml:
 #   main       → 1.0.<run>            e.g. ghcr.io/org/repo:1.0.42
@@ -30,7 +30,6 @@ on:
   push:
     branches:
       - main
-      - "feature/**"
     paths:
       - "src/**"
       - "Dockerfile"
@@ -57,6 +56,7 @@ permissions:
   packages: write      # push image to GHCR
   attestations: write  # store provenance attestations
   id-token: write      # OIDC token required by attest-build-provenance
+  security-events: write  # upload Trivy SARIF to GitHub Security tab
 
 env:
   REGISTRY: ghcr.io
@@ -156,7 +156,34 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ── Step 5: Attest build provenance ─────────────────────────────────────
+      # ── Step 5: Scan image for vulnerabilities ──────────────────────────────
+      # Trivy scans the pushed image — different surface from the fs scan above.
+      # Catches OS-level CVEs in the base image (node:24-slim / distroless) that
+      # wouldn't appear in a repo scan.
+      #
+      # Severity starts at MEDIUM (not LOW) — container base images generate
+      # significant noise at LOW, especially for OS packages.
+      #
+      # Skipped on dry runs (no image was pushed to scan).
+      - name: Scan image for vulnerabilities
+        if: inputs.dry_run != true
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: '${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}'
+          vuln-type: 'os,library'
+          ignore-unfixed: true
+          exit-code: '0'
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+          severity: 'MEDIUM,HIGH,CRITICAL'
+
+      - name: Upload image scan results to GitHub Security tab
+        if: inputs.dry_run != true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-image-results.sarif'
+
+      # ── Step 6: Attest build provenance ─────────────────────────────────────
       # SLSA provenance attestation bound to the image digest, stored in GitHub's
       # attestation store. Only runs for stable releases (main branch).
       #
@@ -170,7 +197,7 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      # ── Step 6: Job summary ──────────────────────────────────────────────────
+      # ── Step 7: Job summary ──────────────────────────────────────────────────
       - name: Image summary
         if: always()
         run: |

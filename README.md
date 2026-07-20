@@ -1,45 +1,96 @@
-# devloop-demo
+# composite-development-loop
 
-Sample project for an inner development loop demo using **Octopus Deploy** and **Azure Web Apps**.
+Demo project for an inner development loop built on **Octopus Deploy**, **Azure Web Apps**, and **Kubernetes**. Covers infrastructure provisioning, multi-target deployments, container image delivery, and supply chain security in a single walkthrough repo.
 
-## Structure
+## Directory structure
 
 ```
 .
+├── src/                         # Node.js/Express app
+│   ├── server.js                # serves build info at / and /health
+│   └── package.json
+│
+├── Dockerfile                   # multi-stage: --target debug (node:24-slim)
+│                                #              --target release (distroless)
+│
+├── k8s/                         # Kubernetes manifests, one folder per environment
+│   ├── development/
+│   │   ├── configmap.yaml       # APP_ENV and runtime config
+│   │   ├── deployment.yaml      # image ref, probes, resource limits
+│   │   └── service.yaml         # LoadBalancer → port 80
+│   ├── test/
+│   └── production/
+│
 ├── terraform/
-│   ├── main.tf                  # monorepo root — development + test modules, use -target
+│   ├── main.tf                  # monorepo root — development + test modules
 │   ├── variables.tf
 │   ├── outputs.tf
-│   ├── octopus.tfvars           # tokenized vars for Octopus CD runs
+│   ├── octopus.tfvars           # variable file for Octopus CD runs
 │   ├── terraform.tfvars.example # copy to local.tfvars for local testing
-│   ├── README.md
 │   ├── module/                  # reusable module — one env per instance
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   ├── outputs.tf
-│   │   └── README.md
 │   └── environments/            # alternative: isolated root per environment
-│       ├── dev/                 #   plain apply, no -target needed
+│       ├── dev/
 │       └── test/
-├── src/                         # Node.js/Express demo app
-│   ├── server.js
-│   └── package.json
+│
+├── octopus_base_package/        # minimal package for Octopus scenario testing
+│   ├── hello-world.sh
+│   ├── hello-world.ps1
+│   └── VERSION                  # base version for testbed-package.yml bumps
+│
+├── .octopus/                    # Octopus Config as Code (CaC) — deployment process,
+│   └── ...                      # variables, and runbooks tracked in source control
+│
 └── .github/
+    ├── dependabot.yml           # weekly grouped updates for all GHA action versions
     └── workflows/
-        ├── ci.yml               # every push/PR → build + package, no Octopus
-        └── publish.yml          # main push → full release; manual dispatch → feature publish
+        ├── ci.yml
+        ├── publish.yml
+        ├── build-image.yml
+        └── testbed-package.yml
 ```
 
-## Infrastructure
+## Workflows
 
-Two approaches are provided — both use the same `module/` definition. See `terraform/README.md` for the full breakdown and tradeoffs.
+| Workflow | Trigger | Intent |
+|---|---|---|
+| `ci.yml` | Every push and PR | Build, package, and filesystem vulnerability scan. No Octopus interaction. Acts as an always-on dry run — if this passes, the code is publishable. |
+| `publish.yml` | Push to `main` (src/** only) or manual dispatch | Packages the app, pushes to Octopus built-in feed, creates a release, and auto-deploys to Development on main. Feature branches via dispatch only. |
+| `build-image.yml` | Push to `main` (src/** or Dockerfile) or manual dispatch | Builds and pushes a container image to GHCR. Main builds use the `release` (distroless) target and are attested. Feature/RC images are manual dispatch — pick the branch and `debug` target in the GitHub UI. Also runs a Trivy image scan after push. |
+| `testbed-package.yml` | Manual dispatch only | Pushes a minimal package to Octopus for scenario testing (variable behaviour, channel routing, etc.). Supports version bump, prerelease tag, and exact version override inputs. |
+
+## Built artifacts
+
+| Artifact | Produced by | Format | Destination |
+|---|---|---|---|
+| App package | `publish.yml` | `.zip` | Octopus built-in feed |
+| Container image | `build-image.yml` | OCI image | `ghcr.io/<owner>/<repo>` |
+| Testbed package | `testbed-package.yml` | `.zip` | Octopus built-in feed |
+| Vulnerability report | `ci.yml`, `build-image.yml` | SARIF | GitHub Security tab |
+| Build provenance | `build-image.yml` (main only) | SLSA attestation | GitHub attestation store |
+
+### Image tags
+
+Each image build produces two tags — no `latest`:
+
+```
+ghcr.io/<owner>/<repo>:1.0.42              # semver — use in Octopus references
+ghcr.io/<owner>/<repo>:1.0.42-sha-a1b2c3d  # SHA-pinned — use in k8s manifests
+```
+
+Verify release attestation:
+```bash
+gh attestation verify oci://ghcr.io/<owner>/<repo>:1.0.42 --repo <owner>/<repo>
+```
+
+## Infrastructure (Terraform)
+
+Two approaches are provided — both use the same `module/` definition. See `terraform/README.md` for tradeoffs.
 
 **Monorepo root with `-target`** (mirrors a common customer pattern):
 
 ```bash
 cd terraform
 cp terraform.tfvars.example local.tfvars
-# edit local.tfvars — set resource_prefix and location
 terraform init
 terraform apply -var-file=local.tfvars -target=module.web_app_development
 terraform apply -var-file=local.tfvars -target=module.web_app_test
@@ -52,14 +103,11 @@ cd terraform/environments/dev
 terraform init && terraform apply -var-file=octopus.tfvars
 ```
 
-Each environment provisions a resource group, App Service Plan, Linux Web App, and a **feature** deployment slot — so feature-branch builds deploy without needing a second app instance.
-
-After apply, check outputs:
+Each environment provisions a resource group, App Service Plan, Linux Web App, and a **feature** deployment slot. Check outputs after apply:
 
 ```bash
 # Monorepo root
 terraform output -json webapp_configuration | jq '.development.app_url'
-terraform output -json webapp_configuration | jq '.test.app_url'
 
 # Environment root
 cd terraform/environments/dev && terraform output
@@ -68,44 +116,41 @@ cd terraform/environments/dev && terraform output
 ## Running locally
 
 ```bash
-cd src
-npm install
-npm run dev          # uses node --watch for live reload
+cd src && npm install && npm run dev
 ```
 
-The app reads build metadata from `.build-env` (stamped by CI) and falls back to sensible local defaults when the file isn't present. Visit `http://localhost:3000` to see the deployment dashboard.
+Visits `http://localhost:3000` — the app reads build metadata from `.build-env` (stamped by CI) and falls back to local defaults when the file isn't present. The `/health` endpoint returns the full build info as JSON.
 
-## Branch → deployment flow
+For the container:
 
-| Trigger | Workflow | Octopus version | Deploy target |
-|---|---|---|---|
-| Any push / PR | `ci.yml` | n/a (not published) | — validates only |
-| Push to `main` | `publish.yml` | `1.0.<run>` | Development (auto), staging/prod via lifecycle |
-| Manual dispatch on `feature/**` | `publish.yml` | `0.0.0-feature-<slug>.<n>` | Feature slot (manual trigger in Octopus) |
+```bash
+# Debug image (has shell)
+docker build --target debug -t devloop-demo:local .
+docker run -p 3000:3000 -e APP_ENV=local devloop-demo:local
 
-### Planned expansion
-
-The branch model is designed to grow towards:
-`individual_dev_story/**` → `feature/**` → `main`
-
-Each layer adds a composable deployment activity in Octopus without changing the mainline release process.
+# Release image (distroless)
+docker build --target release -t devloop-demo:local .
+docker run -p 3000:3000 -e APP_ENV=local devloop-demo:local
+```
 
 ## GitHub secrets required
 
 | Secret | Description |
 |---|---|
-| `OCTOPUS_SERVER_URL` | Your Octopus instance URL |
-| `OCTOPUS_API_KEY` | Service account API key with package push + release create permissions |
-| `OCTOPUS_SPACE` | Octopus space name or ID |
+| `OCTOPUS_SERVER_URL` | Octopus instance URL |
+| `OCTOPUS_API_KEY` | API key with package push + release create permissions |
+| `OCTOPUS_SPACE` | Space name or ID |
+
+`GITHUB_TOKEN` is used automatically by `build-image.yml` for GHCR — no configuration needed.
 
 ## Teardown
 
 ```bash
-# Monorepo root — tear down one environment
+# Monorepo root
 cd terraform
 terraform destroy -var-file=local.tfvars -target=module.web_app_development
 
-# Environment root — tear down in isolation
+# Environment root
 cd terraform/environments/dev
 terraform destroy -var-file=octopus.tfvars
 ```
