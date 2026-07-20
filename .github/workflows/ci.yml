@@ -13,6 +13,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  security-events: write  # upload Trivy SARIF to GitHub Security tab
+
 # ── Workflow-level environment variables ────────────────────────────────────────
 env:
   OCTOPUS_PACKAGE: devloop-demo-app
@@ -26,6 +29,30 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      # ── Scan: Filesystem vulnerability scan ──────────────────────────────────
+      # Trivy scans the repo for vulnerable dependencies and misconfigurations.
+      # Results are uploaded to the GitHub Security tab (Code scanning alerts).
+      #
+      # Runs before Node setup — Trivy reads package-lock.json directly, no
+      # install needed. Fast feedback even before the build steps run.
+      #
+      # exit-code: '0' — non-blocking. Establish a vulnerability baseline first,
+      # then tighten to exit-code: '1' on HIGH/CRITICAL once the backlog is clear.
+      - name: Scan filesystem for vulnerabilities
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          exit-code: '0'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
+
+      - name: Upload scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
 
       # ── Step 1: Compute version and build flags ──────────────────────────────
       # Same versioning logic used by publish.yml so CI and release packages are
@@ -66,7 +93,7 @@ jobs:
           APP_VERSION=${{ steps.meta.outputs.version }}
           APP_BRANCH=${{ steps.meta.outputs.branch }}
           APP_BUILD=${{ github.run_number }}
-          APP_DEPLOYED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          APP_BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           APP_COMMIT_SHA=${{ github.sha }}
           EOF
 
