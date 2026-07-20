@@ -4,14 +4,15 @@ How Trivy is used in this pipeline, what each scan covers, and the intended path
 
 ## Overview
 
-Two distinct Trivy scans run at different stages:
+Three distinct Trivy scans run at different stages:
 
 | Scan | Workflow | Type | Trigger | Surfaces in |
 |---|---|---|---|---|
 | Filesystem scan | `ci.yml` | `fs` | Every push and PR | GitHub Security tab |
+| SBOM generation | `build-image.yml` | `fs` | Image build (main push, weekly schedule, dispatch) | GitHub dependency graph + Octopus feed |
 | Image scan | `build-image.yml` | `image` | Image build (main push, weekly schedule, dispatch) | GitHub Security tab |
 
-These are complementary — they cover different attack surfaces and run at different points in the pipeline.
+These are complementary — they cover different attack surfaces, run at different points in the pipeline, and produce different output formats for different consumers.
 
 ---
 
@@ -35,6 +36,19 @@ severity: 'LOW,MEDIUM,HIGH,CRITICAL'   # broad net for baseline visibility
 ```
 
 **Why LOW is included:** The fs scan casts a wide net deliberately. LOW findings are visible in the Security tab but don't block anything. The goal at this stage is to understand the full landscape before setting enforcement thresholds.
+
+---
+
+## SBOM generation (`build-image.yml`, step 4)
+
+**What it covers:** The repository filesystem and application dependencies — same surface as the CI scan. Two runs back to back:
+
+- `format: 'github'` submits directly to GitHub's dependency graph (feeds the repository's Dependencies tab and Dependabot alerts). Requires `contents: write` permission.
+- `format: 'spdx-json'` writes `sbom.spdx.json`, which is then packaged as `devloop-demo-sbom.<version>.zip` and pushed to the Octopus built-in feed.
+
+**Why this runs in `build-image.yml` and not `ci.yml`:** The SBOM needs to be versioned to the same build that produced the image. Running it here ties the SBOM version directly to the image version, enabling `gh attestation verify` to confirm both artifacts came from the same pipeline run. The CI scan runs earlier and broader but doesn't produce a versioned artifact.
+
+**SBOM scope note:** This is a filesystem scan, not an image scan. It covers the declared application dependencies (`package-lock.json`), not OS-level packages in the base image. OS-level findings are surfaced separately by the image scan below.
 
 ---
 

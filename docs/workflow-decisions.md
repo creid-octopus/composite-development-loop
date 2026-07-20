@@ -29,9 +29,15 @@ This split means `ci.yml` can run on every push to every branch with zero risk o
 
 The Trivy filesystem scan runs immediately after checkout, before `npm install`. Trivy reads `package-lock.json` directly — no installation needed. Placing the scan early means vulnerability feedback arrives before the build steps run, regardless of how long installation takes.
 
-### Package is produced but not pushed
+### Image is built but not pushed
 
-The zip artifact is built end-to-end (same packaging logic as `publish.yml`) but not sent anywhere. This proves the packaging step works without requiring Octopus to be configured. A CI pass means the code is publishable.
+The container image is built (debug target, `node:24-slim`) but not pushed to GHCR. No GHCR login is needed — BuildKit's GHA cache is still used for layer reuse. This validates:
+- Dockerfile syntax and multi-stage target resolution
+- `npm ci` running correctly inside the container
+- Build args wiring through to `ENV` in both stages
+- The full image is producible from this commit
+
+A CI pass means the code is image-buildable and publishable.
 
 ---
 
@@ -101,6 +107,17 @@ Setting `provenance: false` produces a clean single-platform image with a predic
 ### Attestation is main-only
 
 `actions/attest-build-provenance` runs only for main branch builds (`is_release == 'true'`). Feature/RC images built via dispatch are not attested. Rationale: attestation is a production artifact assurance — pre-release images are not deployed to production and don't need the same chain of custody guarantee.
+
+### Multi-subject attestation (image + SBOM)
+
+A single `attest-build-provenance` call covers both the container image and the SBOM zip, using a checksums file rather than separate `subject-name`/`subject-digest` parameters. Format follows the Trident reference implementation (`<sha256-no-prefix>  <subject-name>`, two spaces):
+
+```
+abc123...  ghcr.io/owner/repo:1.0.42
+def456...  devloop-demo-sbom.1.0.42.zip
+```
+
+Attesting the SBOM closes a specific gap: without provenance on the SBOM itself, a substituted or fabricated SBOM could be pushed to the Octopus feed and pass content checks, but would fail `gh attestation verify`. The deployment pipeline can verify both artifacts before proceeding.
 
 ### `no-cache` on scheduled runs
 
