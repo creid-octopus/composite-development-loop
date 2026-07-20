@@ -62,7 +62,7 @@ on:
         required: false
 
 permissions:
-  contents: read
+  contents: write      # write required to submit SBOM to GitHub dependency graph
   packages: write      # push image to GHCR
   attestations: write  # store provenance attestations
   id-token: write      # OIDC token required by attest-build-provenance
@@ -71,6 +71,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}   # e.g. cory/sample-webapp → ghcr.io/cory/sample-webapp
+  SBOM_PACKAGE: devloop-demo-sbom
   VERSION_MAJOR: "1"
   VERSION_MINOR: "0"
 
@@ -134,13 +135,45 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Step 4: Build (and push) ─────────────────────────────────────────────
+      # ── Step 4: Generate SBOM ───────────────────────────────────────────────
+      # Two Trivy runs against the repository filesystem (scan-type: 'fs'):
+      #
+      #   format: 'github'     → submits directly to GitHub's dependency graph.
+      #                          Feeds Dependabot alerts and the dependency tab.
+      #                          Requires contents: write permission.
+      #
+      #   format: 'spdx-json'  → writes sbom.spdx.json for packaging and pushing
+      #                          to Octopus. This is the artifact the CD pipeline
+      #                          consumes for supply chain verification.
+      #
+      # Filesystem scan is used (not image scan) so the SBOM can be generated
+      # before the build and reflects the declared application dependencies.
+      # OS-level findings from the base image are surfaced separately by the
+      # image scan in step 6.
+      - name: Generate SBOM — GitHub dependency graph
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          format: 'github'
+          output: 'dependency-graph.sbom.json'
+          scan-ref: '.'
+          github-pat: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SBOM — SPDX for Octopus
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          format: 'spdx-json'
+          output: 'sbom.spdx.json'
+          scan-ref: '.'
+
+      # ── Step 5: Build (and push) ─────────────────────────────────────────────
       # Build args are baked to ENV in the Dockerfile. server.js reads them via
       # process.env fallback — no .build-env file needed in the image.
       #
       # provenance: false — disables BuildKit's inline provenance manifest so we
       # get a stable single-platform digest. GitHub attestation is handled in
-      # step 6 via actions/attest-build-provenance instead.
+      # step 8 via actions/attest-build-provenance instead.
       #
       # no-cache — forced on scheduled runs so the base image is always pulled
       # fresh, picking up upstream OS patches. Code-triggered builds use the GHA
@@ -172,7 +205,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ── Step 5: Scan image for vulnerabilities ──────────────────────────────
+      # ── Step 6: Scan image for vulnerabilities ──────────────────────────────
       # Trivy scans the pushed image — different surface from the fs scan above.
       # Catches OS-level CVEs in the base image (node:24-slim / distroless) that
       # wouldn't appear in a repo scan.
@@ -199,21 +232,78 @@ jobs:
         with:
           sarif_file: 'trivy-image-results.sarif'
 
-      # ── Step 6: Attest build provenance ─────────────────────────────────────
-      # SLSA provenance attestation bound to the image digest, stored in GitHub's
-      # attestation store. Only runs for stable releases (main branch).
+      # ── Step 7: Package SBOM ────────────────────────────────────────────────
+      # Wraps sbom.spdx.json as a versioned zip for the Octopus built-in feed.
+      # Package ID matches the env var SBOM_PACKAGE so the version always tracks
+      # the image version — both artifacts are stamped with the same semver.
+      - name: Package SBOM
+        id: sbom_package
+        uses: OctopusDeploy/create-zip-package-action@v4
+        with:
+          package_id: '${{ env.SBOM_PACKAGE }}'
+          version: '${{ steps.meta.outputs.version }}'
+          output_folder: './packaging'
+          base_path: '.'
+          files: 'sbom.spdx.json'
+
+      # ── Step 8: Push SBOM to Octopus ─────────────────────────────────────────
+      # Pushes the versioned SBOM zip to the Octopus built-in feed.
+      # OverwriteExisting is safe here: if the same version is re-pushed (e.g.
+      # after a workflow retry) we want the latest content, not a failure.
+      # Skipped on dry runs.
+      - name: Push SBOM to Octopus
+        if: inputs.dry_run != true
+        uses: OctopusDeploy/push-package-action@v4
+        with:
+          server: ${{ secrets.OCTOPUS_SERVER_URL }}
+          space: ${{ secrets.OCTOPUS_SPACE }}
+          api_key: ${{ secrets.OCTOPUS_API_KEY }}
+          packages: ${{ steps.sbom_package.outputs.package_file_path }}
+          overwrite_mode: OverwriteExisting
+
+      # ── Step 9: Build attestation subject checksums ──────────────────────────
+      # Multi-subject attestation following the Trident reference pattern.
+      # A single attest-build-provenance call covers both the image and the SBOM
+      # zip — this closes the gap of a substituted SBOM passing content checks
+      # but failing provenance verification.
+      #
+      # Checksums file format (two spaces between hash and name):
+      #   <sha256-no-prefix>  <subject-name>
+      #
+      # Image: digest comes from the push step output; strip the "sha256:" prefix.
+      # SBOM:  sha256sum the local zip file; use the basename as the subject name.
+      #
+      # Only runs for stable releases (main branch). Feature/RC images are not
+      # attested — they are not promoted to production.
+      - name: Create attestation subject checksums
+        if: inputs.dry_run != true && steps.meta.outputs.is_release == 'true'
+        run: |
+          IMAGE_SHA=$(echo "${{ steps.push.outputs.digest }}" | sed 's/sha256://')
+          SBOM_PKG="${{ steps.sbom_package.outputs.package_file_path }}"
+          SBOM_SHA=$(sha256sum "$SBOM_PKG" | awk '{print $1}')
+          SBOM_NAME=$(basename "$SBOM_PKG")
+          IMAGE_REF="${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}"
+          printf "%s  %s\n%s  %s\n" \
+            "$IMAGE_SHA"  "$IMAGE_REF" \
+            "$SBOM_SHA"   "$SBOM_NAME" \
+            > subject.checksums.txt
+          echo "Attestation subjects:"
+          cat subject.checksums.txt
+
+      # ── Step 10: Attest build provenance (multi-subject) ────────────────────
+      # Produces a SLSA Level 2 provenance attestation stored in GitHub's
+      # attestation store, covering both the image digest and the SBOM zip.
       #
       # Verify after push:
       #   gh attestation verify oci://ghcr.io/<owner>/<repo>:<version> --repo <owner>/<repo>
+      #   gh attestation verify <sbom-zip-path> --repo <owner>/<repo>
       - name: Attest build provenance
         if: inputs.dry_run != true && steps.meta.outputs.is_release == 'true'
         uses: actions/attest-build-provenance@v4
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
+          subject-checksums: subject.checksums.txt
 
-      # ── Step 7: Job summary ──────────────────────────────────────────────────
+      # ── Step 11: Job summary ─────────────────────────────────────────────────
       - name: Image summary
         if: always()
         run: |
@@ -227,7 +317,8 @@ jobs:
             echo "| **SHA tag** | \`${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}-sha-${{ steps.meta.outputs.short_sha }}\` |"
             if [[ "${{ inputs.dry_run }}" != "true" ]]; then
               echo "| **Digest** | \`${{ steps.push.outputs.digest }}\` |"
-              echo "| **Attested** | ${{ steps.meta.outputs.is_release == 'true' && 'yes (main release)' || 'no (pre-release)' }} |"
+              echo "| **SBOM package** | \`${{ steps.sbom_package.outputs.package_file_path }}\` |"
+              echo "| **Attested** | ${{ steps.meta.outputs.is_release == 'true' && 'yes — image + SBOM (main release)' || 'no (pre-release)' }} |"
             else
               echo "| **Pushed** | dry run — skipped |"
             fi
