@@ -2,6 +2,7 @@
 #
 # Trigger behaviour:
 #   main (push, src/** or Dockerfile) → release target (distroless), stable version, auto-attested
+#   schedule (weekly, Monday 06:00)   → same as main push, no-cache to force fresh base image pull
 #   workflow_dispatch                  → manual build from any branch; target overridable (use for
 #                                        feature/RC images — pick branch + debug target in the UI)
 #
@@ -34,6 +35,15 @@ on:
       - "src/**"
       - "Dockerfile"
       - ".dockerignore"
+
+  # Weekly scheduled rebuild — ensures upstream OS patches in the base image
+  # (node:24-slim, distroless) are picked up even when no code has changed.
+  # BuildKit resolves floating tags to their current digest on every build, so
+  # a changed upstream digest automatically invalidates cached layers. The
+  # scheduled run forces no-cache (see build step) to guarantee a fresh pull
+  # regardless of what the GHA cache holds.
+  schedule:
+    - cron: '0 6 * * 1'   # every Monday at 06:00 UTC
 
   workflow_dispatch:
     inputs:
@@ -130,12 +140,18 @@ jobs:
       #
       # provenance: false — disables BuildKit's inline provenance manifest so we
       # get a stable single-platform digest. GitHub attestation is handled in
-      # step 5 via actions/attest-build-provenance instead.
+      # step 6 via actions/attest-build-provenance instead.
+      #
+      # no-cache — forced on scheduled runs so the base image is always pulled
+      # fresh, picking up upstream OS patches. Code-triggered builds use the GHA
+      # cache normally; BuildKit's digest resolution will still invalidate cached
+      # layers if upstream changed since the last build.
       - name: Build and push image
         id: push
         uses: docker/build-push-action@v7
         with:
           context: .
+          no-cache: ${{ github.event_name == 'schedule' }}
           push: ${{ inputs.dry_run != true }}
           target: ${{ steps.meta.outputs.build_target }}
           tags: |
