@@ -1,6 +1,15 @@
 # composite-development-loop
 
-Demo project for an inner development loop built on **Octopus Deploy**, **Azure Web Apps**, and **Kubernetes**. Covers infrastructure provisioning, multi-target deployments, container image delivery, and supply chain security in a single walkthrough repo.
+Demo project for an inner development loop built on **Octopus Deploy**, **GitHub Actions**, and **Kubernetes**. Covers container image delivery, supply chain security (SBOM, SLSA provenance), and multi-environment deployment in a single walkthrough repo.
+
+## Deployment tracks
+
+| Track | Target | Best for |
+|---|---|---|
+| **Container (default)** | Kubernetes (AKS or Docker Desktop) | Primary demo path — image → GHCR → k8s manifests via Octopus |
+| **Hosted** | Azure Web App (App Service) | Non-containerised scenario — zip package → Octopus → Azure Web App via Terraform |
+
+The container track is the primary development path. The hosted track (`hosted/`) demonstrates the same Octopus deployment pipeline for teams not yet on containers.
 
 ## Directory structure
 
@@ -13,7 +22,7 @@ Demo project for an inner development loop built on **Octopus Deploy**, **Azure 
 ├── Dockerfile                   # multi-stage: --target debug (node:24-slim)
 │                                #              --target release (distroless)
 │
-├── k8s/                         # Kubernetes manifests, one folder per environment
+├── k8s/                         # Kubernetes manifests (container track)
 │   ├── development/
 │   │   ├── configmap.yaml       # APP_ENV and runtime config
 │   │   ├── deployment.yaml      # image ref, probes, resource limits
@@ -21,16 +30,11 @@ Demo project for an inner development loop built on **Octopus Deploy**, **Azure 
 │   ├── test/
 │   └── production/
 │
-├── terraform/
-│   ├── main.tf                  # monorepo root — development + test modules
-│   ├── variables.tf
-│   ├── outputs.tf
-│   ├── octopus.tfvars           # variable file for Octopus CD runs
-│   ├── terraform.tfvars.example # copy to local.tfvars for local testing
-│   ├── module/                  # reusable module — one env per instance
-│   └── environments/            # alternative: isolated root per environment
-│       ├── dev/
-│       └── test/
+├── hosted/                      # Hosted track — Azure Web App via Terraform
+│   └── terraform/               # see hosted/terraform/README.md for full detail
+│       ├── main.tf              # monorepo root — development + test modules
+│       ├── module/              # reusable module — one env per instance
+│       └── environments/        # alternative: isolated root per environment
 │
 ├── octopus_base_package/        # minimal package for Octopus scenario testing
 │   ├── hello-world.sh
@@ -53,9 +57,9 @@ Demo project for an inner development loop built on **Octopus Deploy**, **Azure 
 
 | Workflow | Trigger | Intent |
 |---|---|---|
-| `ci.yml` | Every push and PR | Build, package, and filesystem vulnerability scan. No Octopus interaction. Acts as an always-on dry run — if this passes, the code is publishable. |
+| `ci.yml` | Every push and PR | Filesystem vulnerability scan + container image dry build (no push). No Octopus interaction. A passing run means the Dockerfile is valid and the image is buildable. |
 | `publish.yml` | Push to `main` (src/** only) or manual dispatch | Packages the app, pushes to Octopus built-in feed, creates a release, and auto-deploys to Development on main. Feature branches via dispatch only. |
-| `build-image.yml` | Push to `main` (src/** or Dockerfile) or manual dispatch | Builds and pushes a container image to GHCR. Main builds use the `release` (distroless) target and are attested. Feature/RC images are manual dispatch — pick the branch and `debug` target in the GitHub UI. Also runs a Trivy image scan after push. |
+| `build-image.yml` | Push to `main` (src/** or Dockerfile) or manual dispatch | Builds and pushes a container image to GHCR. Generates an SPDX SBOM and packages it to the Octopus feed. Main builds use the `release` (distroless) target and are attested (image + SBOM, multi-subject). Feature/RC images are manual dispatch — pick the branch and `debug` target in the GitHub UI. Also runs a Trivy image scan after push. |
 | `testbed-package.yml` | Manual dispatch only | Pushes a minimal package to Octopus for scenario testing (variable behaviour, channel routing, etc.). Supports version bump, prerelease tag, and exact version override inputs. |
 
 ## Built artifacts
@@ -64,6 +68,7 @@ Demo project for an inner development loop built on **Octopus Deploy**, **Azure 
 |---|---|---|---|
 | App package | `publish.yml` | `.zip` | Octopus built-in feed |
 | Container image | `build-image.yml` | OCI image | `ghcr.io/<owner>/<repo>` |
+| SBOM package | `build-image.yml` | `.zip` (SPDX JSON) | Octopus built-in feed |
 | Testbed package | `testbed-package.yml` | `.zip` | Octopus built-in feed |
 | Vulnerability report | `ci.yml`, `build-image.yml` | SARIF | GitHub Security tab |
 | Build provenance | `build-image.yml` (main only) | SLSA attestation | GitHub attestation store |
@@ -82,36 +87,11 @@ Verify release attestation:
 gh attestation verify oci://ghcr.io/<owner>/<repo>:1.0.42 --repo <owner>/<repo>
 ```
 
-## Infrastructure (Terraform)
+## Hosted deployment (Azure Web App)
 
-Two approaches are provided — both use the same `module/` definition. See `terraform/README.md` for tradeoffs.
+The `hosted/` directory contains the Terraform configuration for the hosted track — Azure App Service environments for `development` and `test`, provisioned via a reusable module and driven by Octopus runbooks.
 
-**Monorepo root with `-target`** (mirrors a common customer pattern):
-
-```bash
-cd terraform
-cp terraform.tfvars.example local.tfvars
-terraform init
-terraform apply -var-file=local.tfvars -target=module.web_app_development
-terraform apply -var-file=local.tfvars -target=module.web_app_test
-```
-
-**Separate environment roots** (directory is the targeting mechanism):
-
-```bash
-cd terraform/environments/dev
-terraform init && terraform apply -var-file=octopus.tfvars
-```
-
-Each environment provisions a resource group, App Service Plan, Linux Web App, and a **feature** deployment slot. Check outputs after apply:
-
-```bash
-# Monorepo root
-terraform output -json webapp_configuration | jq '.development.app_url'
-
-# Environment root
-cd terraform/environments/dev && terraform output
-```
+See **[`hosted/terraform/README.md`](hosted/terraform/README.md)** for setup instructions, the two supported Terraform approaches (monorepo root vs. separate environment roots), outputs, and variable reference.
 
 ## Running locally
 
@@ -238,14 +218,6 @@ permissions:
 
 Blocked on Octopus service account configuration in the current instance — permissions need to be set up before the workflow changes can be tested. No design changes needed; this is purely an implementation step when access is available.
 
-## Teardown
+## Teardown (hosted track)
 
-```bash
-# Monorepo root
-cd terraform
-terraform destroy -var-file=local.tfvars -target=module.web_app_development
-
-# Environment root
-cd terraform/environments/dev
-terraform destroy -var-file=octopus.tfvars
-```
+See [`hosted/terraform/README.md`](hosted/terraform/README.md) for destroy instructions for both Terraform approaches.

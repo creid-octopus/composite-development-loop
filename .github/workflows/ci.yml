@@ -1,11 +1,11 @@
 # Continuous integration — runs on every push and pull request.
 #
-# This job proves the code builds and packages correctly. It has no knowledge
-# of Octopus Deploy and produces no side-effects outside this repository.
-# Think of it as an always-on dry run: if this passes, the code is publishable.
+# Proves the code builds correctly. No side-effects outside this repository.
+# The image is built but not pushed — a passing run means the Dockerfile and
+# build args are valid and the image is publishable.
 #
-# For Octopus integration (pushing packages, creating releases, deploying) see
-# publish.yml — that workflow runs on main merges or manual dispatch.
+# For image publishing see build-image.yml (triggers on main or dispatch).
+# For Octopus integration see publish.yml (main merges or dispatch).
 
 name: CI
 
@@ -16,15 +16,13 @@ on:
 permissions:
   security-events: write  # upload Trivy SARIF to GitHub Security tab
 
-# ── Workflow-level environment variables ────────────────────────────────────────
 env:
-  OCTOPUS_PACKAGE: devloop-demo-app
   VERSION_MAJOR: "1"
   VERSION_MINOR: "0"
 
 jobs:
   build:
-    name: Build & package
+    name: Build image (dry run)
     runs-on: ubuntu-latest
 
     steps:
@@ -54,13 +52,15 @@ jobs:
         with:
           sarif_file: 'trivy-fs-results.sarif'
 
-      # ── Step 1: Compute version and build flags ──────────────────────────────
-      # Same versioning logic used by publish.yml so CI and release packages are
-      # stamped consistently. On main: 1.0.<run>. On any other branch: 0.0.0-<slug>.<run>.
+      # ── Step 1: Compute version ──────────────────────────────────────────────
+      # Same scheme as build-image.yml — build args are stamped so the dry build
+      # exercises the full ARG → ENV path in the Dockerfile.
       - name: Compute build metadata
         id: meta
         run: |
           BRANCH="$GITHUB_REF_NAME"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
           if [[ "$BRANCH" == "main" ]]; then
             VERSION="${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ github.run_number }}"
@@ -69,39 +69,35 @@ jobs:
             VERSION="0.0.0-${SAFE_BRANCH}.${{ github.run_number }}"
           fi
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "branch=$BRANCH"   >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"     >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH"       >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "built_at=$BUILT_AT"   >> "$GITHUB_OUTPUT"
 
-      # ── Step 2: Set up Node ──────────────────────────────────────────────────
-      - uses: actions/setup-node@v7
+      # ── Step 2: Set up Buildx ────────────────────────────────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # ── Step 3: Build image (no push) ────────────────────────────────────────
+      # Builds the debug target (node:24-slim) — faster than distroless and
+      # covers the same Dockerfile logic. Not pushed; the build output is
+      # discarded. A passing build confirms:
+      #   - Dockerfile syntax is valid
+      #   - npm ci succeeds inside the container
+      #   - Build args wire through to ENV correctly
+      #   - Multi-stage target resolution works
+      - name: Build image (dry run)
+        uses: docker/build-push-action@v7
         with:
-          node-version: "24"
-          cache: "npm"
-          cache-dependency-path: src/package.json
-
-      # ── Step 3: Install dependencies ────────────────────────────────────────
-      - name: Install dependencies
-        working-directory: src
-        run: npm ci --omit=dev
-
-      # ── Step 4: Stamp build metadata ────────────────────────────────────────
-      # Produces the same .build-env that a real publish would include, so the
-      # resulting package is representative of what would be shipped.
-      - name: Write build metadata
-        run: |
-          cat > src/.build-env <<EOF
-          APP_VERSION=${{ steps.meta.outputs.version }}
-          APP_BRANCH=${{ steps.meta.outputs.branch }}
-          APP_BUILD=${{ github.run_number }}
-          APP_BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          APP_COMMIT_SHA=${{ github.sha }}
-          EOF
-
-      # ── Step 5: Package ──────────────────────────────────────────────────────
-      # Zip is produced but not pushed anywhere — existence of the file proves
-      # the packaging step works end-to-end without needing Octopus to be set up.
-      - name: Package app
-        run: |
-          PKG_NAME="${{ env.OCTOPUS_PACKAGE }}.${{ steps.meta.outputs.version }}.zip"
-          cd src && zip -r "../$PKG_NAME" . -x "*.test.*" "*.spec.*"
-          echo "Built: $PKG_NAME ($(du -sh ../$PKG_NAME | cut -f1))"
+          context: .
+          push: false
+          target: debug
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            APP_BRANCH=${{ steps.meta.outputs.branch }}
+            APP_BUILD=${{ github.run_number }}
+            APP_BUILT_AT=${{ steps.meta.outputs.built_at }}
+            APP_COMMIT_SHA=${{ github.sha }}
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

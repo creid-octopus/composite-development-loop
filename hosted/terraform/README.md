@@ -22,7 +22,7 @@ terraform apply -var-file=local.tfvars
 terraform destroy -var-file=local.tfvars
 ```
 
-Octopus runbook points to `terraform/` and passes `-target` as a parameter.
+Octopus runbook points to `hosted/terraform/` and passes `-target` as a parameter.
 
 ### 2. Separate environment roots (`terraform/environments/`)
 
