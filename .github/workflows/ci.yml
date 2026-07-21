@@ -11,6 +11,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 permissions:
@@ -78,19 +80,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # ── Step 3: Build image (no push) ────────────────────────────────────────
+      # ── Step 3: Build image (dry run) ────────────────────────────────────────
       # Builds the debug target (node:24-slim) — faster than distroless and
-      # covers the same Dockerfile logic. Not pushed; the build output is
-      # discarded. A passing build confirms:
-      #   - Dockerfile syntax is valid
-      #   - npm ci succeeds inside the container
-      #   - Build args wire through to ENV correctly
-      #   - Multi-stage target resolution works
+      # covers the same Dockerfile logic. Not pushed to GHCR.
+      #
+      # load: true — exports the image to the local Docker daemon so Trivy can
+      # scan it in the next step. Without load, the image exists only in BuildKit's
+      # internal cache and is inaccessible to other tools.
+      #
+      # Note: load + cache-to: gha conflict when used together (BuildKit can't
+      # simultaneously export to daemon and write to the GHA cache backend in
+      # the same invocation). cache-from still works — we read from cache on hits,
+      # but the post-build cache write is omitted on CI dry-build runs.
       - name: Build image (dry run)
         uses: docker/build-push-action@v7
         with:
           context: .
           push: false
+          load: true
+          tags: devloop-demo:ci
           target: debug
           build-args: |
             APP_VERSION=${{ steps.meta.outputs.version }}
@@ -100,4 +108,30 @@ jobs:
             APP_COMMIT_SHA=${{ github.sha }}
           provenance: false
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+
+      # ── Step 4: Scan image for vulnerabilities (best-effort) ─────────────────
+      # Trivy scans the locally-loaded image — catches OS-level CVEs in the base
+      # image (node:24-slim) and library CVEs that the filesystem scan misses.
+      #
+      # This is a best-effort early signal during the development loop. It scans
+      # the debug target, not the distroless release image, so some OS package
+      # differences may exist. The authoritative image scan runs against the pushed
+      # release image in build-image.yml.
+      #
+      # exit-code: '0' — non-blocking, same rationale as the filesystem scan.
+      - name: Scan image for vulnerabilities (best-effort)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'image'
+          image-ref: 'devloop-demo:ci'
+          vuln-type: 'os,library'
+          ignore-unfixed: true
+          exit-code: '0'
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+          severity: 'MEDIUM,HIGH,CRITICAL'
+
+      - name: Upload image scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: 'trivy-image-results.sarif'

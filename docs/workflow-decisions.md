@@ -10,7 +10,7 @@ The pipeline is intentionally split across four workflows rather than one monoli
 
 | Workflow | Responsibility | Side effects |
 |---|---|---|
-| `ci.yml` | Validate, scan, package | None outside the repo |
+| `ci.yml` | Filesystem scan + image dry build + image scan (best-effort) | None outside the repo |
 | `publish.yml` | Push zip package + create Octopus release | Octopus feed, release, deployment |
 | `build-image.yml` | Build + push container image | GHCR, GitHub attestation store |
 | `testbed-package.yml` | Ad-hoc Octopus scenario testing | Octopus feed, release |
@@ -21,23 +21,38 @@ This split means `ci.yml` can run on every push to every branch with zero risk o
 
 ## `ci.yml`
 
-### No path filter
+### Trigger: `pull_request` + push to `main` only
 
-`ci.yml` triggers on every push and every PR with no path filter. This is intentional: the workflow validates that the code is buildable and packageable. A change to Terraform, a README update, or a `.github/` change that somehow breaks the `src/` build should be caught immediately. Path filters here would create blind spots.
+`ci.yml` does not trigger on push to feature branches. The `push` trigger is scoped to `main` only; feature branch commits rely on the `pull_request` event. This prevents duplicate runs when a push and an open PR fire simultaneously — a common pattern when an external system (e.g. an Argo CD tag-update bot) pushes a commit and opens a PR in the same operation.
 
-### Scan runs before Node setup
+The split works cleanly because the two events never overlap:
+- **Feature branch with open PR** → `pull_request` fires, `push` does not (branch ≠ main)
+- **Merge to main** → `push` fires, PR is closed at that point
 
-The Trivy filesystem scan runs immediately after checkout, before `npm install`. Trivy reads `package-lock.json` directly — no installation needed. Placing the scan early means vulnerability feedback arrives before the build steps run, regardless of how long installation takes.
+No path filter — a broken `src/` build from a README or `.github/` change should still be caught.
 
-### Image is built but not pushed
+### Filesystem scan runs first
 
-The container image is built (debug target, `node:24-slim`) but not pushed to GHCR. No GHCR login is needed — BuildKit's GHA cache is still used for layer reuse. This validates:
+The Trivy `fs` scan runs immediately after checkout, before the build steps. Trivy reads `package-lock.json` directly — no `npm install` needed. This gives the fastest possible vulnerability signal and doesn't depend on the build succeeding.
+
+### Image is built and loaded for local scanning
+
+The container image is built with `load: true`, which exports it to the local Docker daemon rather than discarding the BuildKit output. This allows Trivy to scan the image by reference (`devloop-demo:ci`) in the next step without pushing to any registry.
+
+The build validates:
 - Dockerfile syntax and multi-stage target resolution
 - `npm ci` running correctly inside the container
 - Build args wiring through to `ENV` in both stages
-- The full image is producible from this commit
 
-A CI pass means the code is image-buildable and publishable.
+### `cache-to` is omitted on CI dry builds
+
+`load: true` and `cache-to: type=gha` cannot be used together in the same BuildKit invocation — BuildKit cannot simultaneously export to the local daemon and write to the GHA cache backend. `cache-from` still works (warm cache reads are unaffected), but the post-build cache write is skipped on CI dry-build runs. The full cache write happens in `build-image.yml` when the image is pushed for real.
+
+If cache population from CI becomes important, the workaround is two build steps: one with `cache-to` (no load), one with `load: true` (reads from freshly-written cache). Not worth the added complexity given the best-effort intent of the CI image scan.
+
+### Image scan is best-effort
+
+The Trivy image scan in CI targets the `debug` build (node:24-slim base), not the `release` distroless image. It surfaces OS-level CVEs in the base image and library CVEs that the filesystem scan would miss, providing an early signal during the development loop. The authoritative scan — against the actual pushed release image — runs in `build-image.yml`. Both are non-blocking (`exit-code: '0'`) while the baseline is being established.
 
 ---
 
