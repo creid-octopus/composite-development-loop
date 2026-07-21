@@ -53,6 +53,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-fs-results.sarif'
+          category: 'Dependency Scanning'
 
       # ── Step 1: Compute version ──────────────────────────────────────────────
       # Same scheme as build-image.yml — build args are stamped so the dry build
@@ -135,3 +136,4 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-image-results.sarif'
+          category: 'Image Scanning'
