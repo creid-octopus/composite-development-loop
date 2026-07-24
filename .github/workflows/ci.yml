@@ -40,7 +40,7 @@ jobs:
       # exit-code: '0' — non-blocking. Establish a vulnerability baseline first,
       # then tighten to exit-code: '1' on HIGH/CRITICAL once the backlog is clear.
       - name: Scan filesystem for vulnerabilities
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           ignore-unfixed: true
@@ -121,7 +121,7 @@ jobs:
       #
       # exit-code: '0' — non-blocking, same rationale as the filesystem scan.
       - name: Scan image for vulnerabilities (best-effort)
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
           image-ref: 'devloop-demo:ci'
