@@ -129,7 +129,7 @@ jobs:
       # Skipped on dry runs (nothing to push, no auth needed).
       - name: Log in to GHCR
         if: inputs.dry_run != true
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.5.2
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -151,7 +151,7 @@ jobs:
       # OS-level findings from the base image are surfaced separately by the
       # image scan in step 6.
       - name: Generate SBOM — GitHub dependency graph
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           format: 'github'
@@ -160,7 +160,7 @@ jobs:
           github-pat: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate SBOM — SPDX for Octopus
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           format: 'spdx-json'
@@ -216,7 +216,7 @@ jobs:
       # Skipped on dry runs (no image was pushed to scan).
       - name: Scan image for vulnerabilities
         if: inputs.dry_run != true
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: '${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}'
           vuln-type: 'os,library'
@@ -228,7 +228,7 @@ jobs:
 
       - name: Upload image scan results to GitHub Security tab
         if: inputs.dry_run != true
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v4.37.3
         with:
           sarif_file: 'trivy-image-results.sarif'
 
