@@ -34,3 +34,7 @@ variable "Project.Terraform.PlanHasChanges" {
         process = ["runbook/destroy-project-infrastructure"]
     }
 }
+
+variable "phemeralEnvironment.InputString" {
+    value "#{Octopus.Environment.Name}" {}
+}
