@@ -12,4 +12,26 @@ run_retention_policy {
     type = "Default"
 }
 
-process {}
+process {
+    step "run-a-script" {
+        name = "Run a Script"
+
+        action {
+            action_type = "Octopus.Script"
+            properties = {
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    $inputString = $OctopusParameters["EphemeralEnvironment.InputString"]
+                    Write-Highlight "Provisioning for $inputString"
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+            }
+            worker_pool_variable = "ExecutionContainer.Linux.WorkerPool"
+
+            container {
+                feed = "docker-hub"
+                image = "#{ExecutionContainer.Linux.DefaultImage}"
+            }
+        }
+    }
+}
