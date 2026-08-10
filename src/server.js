@@ -42,14 +42,14 @@ const envColours = {
   "test-feature": "#b45309",   // amber
   test:           "#1d4ed8",   // blue
   staging:        "#7c3aed",   // purple
-  local:          "#374151",   // grey
+  local:          "#375151",   // grey
 };
 
 function bannerColour(env) {
   for (const [key, colour] of Object.entries(envColours)) {
     if (env.toLowerCase().includes(key)) return colour;
   }
-  return "#374151";
+  return "#375151";
 }
 
 app.get("/", (req, res) => {
