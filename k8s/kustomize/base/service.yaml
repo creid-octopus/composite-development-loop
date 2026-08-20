@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: devloop-demo
+  labels:
+    app: devloop-demo
+spec:
+  type: LoadBalancer
+  selector:
+    app: devloop-demo
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+  # Docker Desktop: external IP resolves to localhost
+  # AKS: Azure provisions a public IP via cloud-provider-azure
