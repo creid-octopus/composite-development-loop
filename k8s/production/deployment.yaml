@@ -4,7 +4,7 @@ metadata:
   name: devloop-demo
   labels:
     app: devloop-demo
-  namespace: devloop-demo
+  namespace: devloop-demo-production
 spec:
   replicas: 1
   selector:
