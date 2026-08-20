@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.appName }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.appName }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1       # one extra pod during rollout
+      maxUnavailable: 0  # never drop below desired count
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}
+    spec:
+      containers:
+        - name: {{ .Values.appName }}
+          # Image reference — updated by Octopus/ArgoCD at deploy time.
+          image: {{ .Values.image }}
+          ports:
+            - containerPort: {{ .Values.containerPort }}
+          env:
+            # Runtime identity — set per environment via ConfigMap or Octopus variable substitution.
+            # This is the only env var not baked into the image at build time.
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configMapName }}
+                  key: APP_ENV
+          resources:
+            requests:
+              cpu: {{ .Values.requestsCpu }}
+              memory: {{ .Values.requestsMemory }}
+            limits:
+              cpu: {{ .Values.limitsCpu }}
+              memory: {{ .Values.limitsMemory }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probePath }}
+              port: {{ .Values.containerPort }}
+            initialDelaySeconds: {{ .Values.livenessInitialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessPeriodSeconds }}
+            failureThreshold: {{ .Values.livenessFailureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probePath }}
+              port: {{ .Values.containerPort }}
+            initialDelaySeconds: {{ .Values.readinessInitialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessPeriodSeconds }}
+            failureThreshold: {{ .Values.readinessFailureThreshold }}

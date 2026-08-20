@@ -1,0 +1,5 @@
+# Overrides for the development environment.
+# Loaded after values.yaml.
+
+namespace: devloop-demo-development
+appEnv: Development

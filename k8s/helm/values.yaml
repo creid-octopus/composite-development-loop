@@ -1,0 +1,28 @@
+# Default values for devloop-demo.
+# Per-environment overrides live in values-<env>.yaml.
+
+appName: devloop-demo
+image: ghcr.io/creid-octopus/composite-development-loop:1.0.7-sha-f6a65a3
+
+replicaCount: 1
+namespace: devloop-demo
+configMapName: devloop-demo-config
+
+appEnv: Development
+
+containerPort: 3000
+servicePort: 80
+probePath: /health
+
+requestsCpu: 100m
+requestsMemory: 128Mi
+limitsCpu: 250m
+limitsMemory: 256Mi
+
+livenessInitialDelaySeconds: 10
+livenessPeriodSeconds: 30
+livenessFailureThreshold: 3
+
+readinessInitialDelaySeconds: 5
+readinessPeriodSeconds: 10
+readinessFailureThreshold: 3

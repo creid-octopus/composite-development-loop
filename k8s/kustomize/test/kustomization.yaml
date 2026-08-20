@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+namespace: devloop-demo-test
+
+patches:
+  - target:
+      kind: ConfigMap
+      name: devloop-demo-config
+    patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: devloop-demo-config
+      data:
+        APP_ENV: "Test"
