@@ -25,7 +25,7 @@ spec:
           # Image reference — updated by Octopus/ArgoCD at deploy time.
           # For Octopus structured variable substitution: ghcr.io/<owner>/sample-webapp:#{Octopus.Release.Number}
           # For ArgoCD image updater: annotate with argocd-image-updater.argoproj.io/image-list
-          image: ghcr.io/creid-octopus/composite-development-loop:1.0.13-sha-16c666b
+          image: ghcr.io/creid-octopus/composite-development-loop:1.0.14-sha-a008a4d
           ports:
             - containerPort: 3000
           env:
