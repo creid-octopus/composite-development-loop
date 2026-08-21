@@ -4,7 +4,7 @@
 appName: helm-devloop-demo
 image:
   repository: ghcr.io/creid-octopus/composite-development-loop
-  tag: 1.0.7-sha-f6a65a3
+  tag: 1.0.14-sha-a008a4d
 
 replicaCount: 1
 namespace: devloop-demo
