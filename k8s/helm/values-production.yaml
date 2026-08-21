@@ -4,3 +4,5 @@
 namespace: devloop-demo-production
 
 appEnv: Production
+
+image: ghcr.io/creid-octopus/composite-development-loop:1.0.7-sha-f6a65a3
