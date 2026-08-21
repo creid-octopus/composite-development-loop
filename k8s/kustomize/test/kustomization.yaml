@@ -1,19 +1,19 @@
+# Overlay for Kustomize-built devloop-demo (test).
+# Applies namespace patch and namePrefix on top of base.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../base
+  - ../../base
+
+namePrefix: kustomize-
 
 namespace: devloop-demo-test
 
 patches:
   - target:
       kind: ConfigMap
-      name: devloop-demo-config
-    patch: |-
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: devloop-demo-config
-      data:
-        APP_ENV: "Test"
+    patch: |
+      - op: replace
+        path: /data/APP_ENV
+        value: "Test"

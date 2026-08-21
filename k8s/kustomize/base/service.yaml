@@ -12,5 +12,3 @@ spec:
     - name: http
       port: 80
       targetPort: 3000
-  # Docker Desktop: external IP resolves to localhost
-  # AKS: Azure provisions a public IP via cloud-provider-azure

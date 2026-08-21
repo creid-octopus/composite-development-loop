@@ -4,11 +4,12 @@ apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
   name: kustomize-applications
+  namespace: argocd
 spec:
   generators:
     - list:
         elements:
-          - name: devloop-demo-production
+          - name: kustomize-devloop-demo-production
             environment: production
             namespace: devloop-demo-production
             path: k8s/kustomize/production

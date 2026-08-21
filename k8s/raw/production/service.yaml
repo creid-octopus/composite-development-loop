@@ -1,17 +1,15 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: devloop-demo
+  name: raw-devloop-demo
   labels:
-    app: devloop-demo
+    app: raw-devloop-demo
   namespace: devloop-demo-production
 spec:
   type: LoadBalancer
   selector:
-    app: devloop-demo
+    app: raw-devloop-demo
   ports:
     - name: http
       port: 80
       targetPort: 3000
-  # Docker Desktop: external IP resolves to localhost
-  # AKS: Azure provisions a public IP via cloud-provider-azure

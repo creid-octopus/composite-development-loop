@@ -4,11 +4,12 @@ apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
   name: helm-applications
+  namespace: argocd
 spec:
   generators:
     - list:
         elements:
-          - name: devloop-demo-production
+          - name: helm-devloop-demo-production
             environment: production
             namespace: devloop-demo-production
   template:

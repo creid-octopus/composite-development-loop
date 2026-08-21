@@ -1,15 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: devloop-demo
+  name: raw-devloop-demo
   labels:
-    app: devloop-demo
+    app: raw-devloop-demo
   namespace: devloop-demo-test
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: devloop-demo
+      app: raw-devloop-demo
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -18,23 +18,18 @@ spec:
   template:
     metadata:
       labels:
-        app: devloop-demo
+        app: raw-devloop-demo
     spec:
       containers:
-        - name: devloop-demo
-          # Image reference — updated by Octopus/ArgoCD at deploy time.
-          # For Octopus structured variable substitution: ghcr.io/<owner>/sample-webapp:#{Octopus.Release.Number}
-          # For ArgoCD image updater: annotate with argocd-image-updater.argoproj.io/image-list
+        - name: raw-devloop-demo
           image: ghcr.io/creid-octopus/composite-development-loop:1.0.14-sha-a008a4d
           ports:
             - containerPort: 3000
           env:
-            # Runtime identity — set per environment via ConfigMap or Octopus variable substitution.
-            # This is the only env var not baked into the image at build time.
             - name: APP_ENV
               valueFrom:
                 configMapKeyRef:
-                  name: devloop-demo-config
+                  name: raw-devloop-demo-config
                   key: APP_ENV
           resources:
             requests:

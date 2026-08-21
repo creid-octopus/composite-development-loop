@@ -1,5 +1,4 @@
-# Overrides for the test environment.
-# Loaded after values.yaml.
+# Helm values for test.
+# Overrides default values only for environment-specific settings.
 
-namespace: devloop-demo-test
 appEnv: Test

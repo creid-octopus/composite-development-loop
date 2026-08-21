@@ -4,15 +4,16 @@ apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
   name: raw-applications
+  namespace: argocd
 spec:
   generators:
     - list:
         elements:
-          - name: devloop-demo-development
+          - name: raw-devloop-demo-development
             environment: development
             namespace: devloop-demo-development
             path: k8s/raw/development
-          - name: devloop-demo-test
+          - name: raw-devloop-demo-test
             environment: test
             namespace: devloop-demo-test
             path: k8s/raw/test

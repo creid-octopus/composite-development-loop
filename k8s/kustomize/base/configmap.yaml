@@ -3,5 +3,4 @@ kind: ConfigMap
 metadata:
   name: devloop-demo-config
 data:
-  # property-like keys; each key maps to a simple value
   APP_ENV: "Development"

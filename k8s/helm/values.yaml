@@ -1,12 +1,12 @@
 # Default values for devloop-demo.
 # Per-environment overrides live in values-<env>.yaml.
 
-appName: devloop-demo
+appName: helm-devloop-demo
 image: ghcr.io/creid-octopus/composite-development-loop:1.0.7-sha-f6a65a3
 
 replicaCount: 1
 namespace: devloop-demo
-configMapName: devloop-demo-config
+configMapName: helm-devloop-demo-config
 
 appEnv: Development
 
