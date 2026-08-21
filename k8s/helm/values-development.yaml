@@ -4,6 +4,3 @@
 namespace: devloop-demo-development
 
 appEnv: Development
-
-image:
-  tag: 1.0.7-sha-f6a65a3
