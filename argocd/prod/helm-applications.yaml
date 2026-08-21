@@ -18,6 +18,8 @@ spec:
       annotations:
         argo.octopus.com/project.argocd-helm: "argocd-helm"
         argo.octopus.com/environment.argocd-helm: '{{ environment }}'
+        argo.octopus.com/image-replace-paths.argocd-helm: >
+          {{ .Values.image.repository }}:{{ .Values.image.tag }}
     spec:
       project: default
       source:
