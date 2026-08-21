@@ -23,7 +23,7 @@ spec:
       containers:
         - name: {{ .Values.appName }}
           # Image reference — updated by Octopus/ArgoCD at deploy time.
-          image: {{ .Values.image }}
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           ports:
             - containerPort: {{ .Values.containerPort }}
           env:
