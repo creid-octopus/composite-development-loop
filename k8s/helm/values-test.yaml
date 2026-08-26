@@ -5,4 +5,4 @@ namespace: devloop-demo-test
 
 appEnv: Test
 
-image: ghcr.io/creid-octopus/composite-development-loop:1.0.7-sha-f6a65a3
+image: ghcr.io/creid-octopus/composite-development-loop:1.0.15-sha-4666fc7
