@@ -4,6 +4,9 @@ metadata:
   name: raw-devloop-demo
   labels:
     app: raw-devloop-demo
+    app.kubernetes.io/version: "latest"
+    app.kubernetes.io/commit: "unknown"
+    app.kubernetes.io/environment: "Development"
   namespace: devloop-demo-development
 spec:
   replicas: 1
@@ -19,6 +22,18 @@ spec:
     metadata:
       labels:
         app: raw-devloop-demo
+        app.kubernetes.io/version: "latest"
+        app.kubernetes.io/commit: "unknown"
+        app.kubernetes.io/environment: "Development"
+      annotations:
+        ad.datadoghq.com/raw-devloop-demo: |
+          checks:
+            http_check:
+              - init_config:
+                instances:
+                  - name: pod health
+                    url: "http://%%host%%:3000/health"
+                    timeout: 1
     spec:
       containers:
         - name: raw-devloop-demo
@@ -29,6 +44,11 @@ spec:
           ports:
             - containerPort: 3000
           env:
+            # DataDog APM
+            - name: DD_TRACE_ENABLED
+              value: "true"
+            - name: DD_SERVICE
+              value: "raw-devloop-demo"
             # Runtime identity — set per environment via ConfigMap or Octopus variable substitution.
             - name: APP_ENV
               valueFrom:

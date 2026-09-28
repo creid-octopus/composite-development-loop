@@ -19,6 +19,9 @@ spec:
     metadata:
       labels:
         app: {{ .Values.appName }}
+        {{- include "app.versionLabels" . | nindent 8 }}
+      annotations:
+        {{- include "app.datadogAnnotations" . | nindent 8 }}
     spec:
       containers:
         - name: {{ .Values.appName }}
@@ -34,6 +37,17 @@ spec:
                 configMapKeyRef:
                   name: {{ .Values.configMapName }}
                   key: APP_ENV
+            {{- if .Values.datadog.enabled }}
+            # DataDog APM environment variables — flow through traces for version tagging
+            - name: DD_TRACE_ENABLED
+              value: "{{ .Values.datadog.ddTraceEnabled }}"
+            - name: DD_SERVICE
+              value: {{ .Values.appName }}
+            - name: DD_ENV
+              value: {{ .Values.appEnv | quote }}
+            - name: DD_VERSION
+              value: {{ .Values.appVersion | default "latest" | quote }}
+            {{- end }}
           resources:
             requests:
               cpu: {{ .Values.requestsCpu }}

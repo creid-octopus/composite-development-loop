@@ -24,7 +24,11 @@ ENV APP_VERSION=${APP_VERSION} \
     APP_BRANCH=${APP_BRANCH} \
     APP_BUILD=${APP_BUILD} \
     APP_BUILT_AT=${APP_BUILT_AT} \
-    APP_COMMIT_SHA=${APP_COMMIT_SHA}
+    APP_COMMIT_SHA=${APP_COMMIT_SHA} \
+    DD_TRACE_ENABLED=true \
+    DD_SERVICE=devloop_demo \
+    DD_ENV=${APP_ENV} \
+    DD_VERSION=${APP_VERSION}
 
 EXPOSE 3000
 CMD ["node", "server.js"]
@@ -45,7 +49,11 @@ ENV APP_VERSION=${APP_VERSION} \
     APP_BRANCH=${APP_BRANCH} \
     APP_BUILD=${APP_BUILD} \
     APP_BUILT_AT=${APP_BUILT_AT} \
-    APP_COMMIT_SHA=${APP_COMMIT_SHA}
+    APP_COMMIT_SHA=${APP_COMMIT_SHA} \
+    DD_TRACE_ENABLED=true \
+    DD_SERVICE=devloop_demo \
+    DD_ENV=${APP_ENV} \
+    DD_VERSION=${APP_VERSION}
 
 EXPOSE 3000
 # Distroless ENTRYPOINT is the node binary — CMD is just the script path

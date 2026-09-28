@@ -18,6 +18,17 @@ spec:
     metadata:
       labels:
         app: devloop-demo
+        app.kubernetes.io/version: "default"
+        app.kubernetes.io/environment: "default"
+      annotations:
+        ad.datadoghq.com/devloop-demo: |
+          checks:
+            http_check:
+              - init_config:
+                instances:
+                  - name: pod health
+                    url: "http://%%host%%:3000/health"
+                    timeout: 1
     spec:
       containers:
         - name: devloop-demo
@@ -25,6 +36,10 @@ spec:
           ports:
             - containerPort: 3000
           env:
+            - name: DD_TRACE_ENABLED
+              value: "false"
+            - name: DD_SERVICE
+              value: "devloop-demo"
             - name: APP_ENV
               valueFrom:
                 configMapKeyRef:

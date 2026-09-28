@@ -19,6 +19,18 @@ requestsMemory: 128Mi
 limitsCpu: 250m
 limitsMemory: 256Mi
 
+datadog:
+  enabled: false
+  ddTraceEnabled: false
+  autoInstrumentation:
+    enabled: false
+
+podLabels: {}
+podAnnotations: {}
+
+appVersion: "latest"
+commitSha: "unknown"
+
 livenessInitialDelaySeconds: 10
 livenessPeriodSeconds: 30
 livenessFailureThreshold: 3

@@ -4,6 +4,9 @@ metadata:
   name: raw-devloop-demo
   labels:
     app: raw-devloop-demo
+    app.kubernetes.io/version: "latest"
+    app.kubernetes.io/commit: "unknown"
+    app.kubernetes.io/environment: "Test"
   namespace: devloop-demo-test
 spec:
   replicas: 1
@@ -19,13 +22,34 @@ spec:
     metadata:
       labels:
         app: raw-devloop-demo
+        app.kubernetes.io/version: "latest"
+        app.kubernetes.io/commit: "unknown"
+        app.kubernetes.io/environment: "Test"
+      annotations:
+        ad.datadoghq.com/raw-devloop-demo: |
+          checks:
+            http_check:
+              - init_config:
+                instances:
+                  - name: pod health
+                    url: "http://%%host%%:3000/health"
+                    timeout: 1
     spec:
       containers:
         - name: raw-devloop-demo
+          # Image reference — updated by Octopus/ArgoCD at deploy time.
+          # For Octopus structured variable substitution: ghcr.io/<owner>/sample-webapp:#{Octopus.Release.Number}
+          # For ArgoCD image updater: annotate with argocd-image-updater.argoproj.io/image-list
           image: ghcr.io/creid-octopus/composite-development-loop:1.0.19-sha-63c2f43
           ports:
             - containerPort: 3000
           env:
+            # DataDog APM
+            - name: DD_TRACE_ENABLED
+              value: "true"
+            - name: DD_SERVICE
+              value: "raw-devloop-demo"
+            # Runtime identity — set per environment via ConfigMap or Octopus variable substitution.
             - name: APP_ENV
               valueFrom:
                 configMapKeyRef:

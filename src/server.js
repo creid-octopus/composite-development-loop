@@ -4,6 +4,23 @@ const path = require("path");
 const app = express();
 const port = process.env.PORT || 3000;
 
+
+// Manage DataDog integration
+const ddTraceEnabled = process.env.DD_TRACE_ENABLED === 'true';
+
+if (ddTraceEnabled) {
+  try {
+    const tracer = require('dd-trace');
+    tracer.init({
+      service: process.env.DD_SERVICE || 'devloop-demo',
+      env: process.env.DD_ENV,
+      version: process.env.DD_VERSION
+    });
+  } catch (err) {
+    console.warn("DD_TRACE_ENABLED=true but dd-trace is not installed:", err.message);
+  }
+}
+
 // Read the .build-env file stamped by the CI "Write build metadata" step into a
 // plain object. Returns an empty object locally (file won't exist in dev).
 // Keys are: APP_VERSION, APP_BRANCH, APP_BUILD, APP_BUILT_AT, APP_COMMIT_SHA.
