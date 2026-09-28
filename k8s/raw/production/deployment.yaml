@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: raw-devloop-demo
-          image: ghcr.io/creid-octopus/composite-development-loop:1.0.17-sha-77e364b
+          image: ghcr.io/creid-octopus/composite-development-loop:1.0.19-sha-63c2f43
           ports:
             - containerPort: 3000
           env:
