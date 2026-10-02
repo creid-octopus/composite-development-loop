@@ -1,25 +1,11 @@
+// OpenTelemetry must load before express and http are required.
+require("./instrumentation");
+
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const app = express();
 const port = process.env.PORT || 3000;
-
-
-// Manage DataDog integration
-const ddTraceEnabled = process.env.DD_TRACE_ENABLED === 'true';
-
-if (ddTraceEnabled) {
-  try {
-    const tracer = require('dd-trace');
-    tracer.init({
-      service: process.env.DD_SERVICE || 'devloop-demo',
-      env: process.env.DD_ENV,
-      version: process.env.DD_VERSION
-    });
-  } catch (err) {
-    console.warn("DD_TRACE_ENABLED=true but dd-trace is not installed:", err.message);
-  }
-}
 
 // Read the .build-env file stamped by the CI "Write build metadata" step into a
 // plain object. Returns an empty object locally (file won't exist in dev).
@@ -68,6 +54,78 @@ function bannerColour(env) {
   }
   return "#374151";
 }
+
+// ── Failure simulation ────────────────────────────────────────────────────
+// Lets a demo trigger real, observable failures on demand.
+// Kept off /health so probes never trip them by accident.
+//
+//   /simulate/errors?rate=0.5   for the next N minutes, return 500 on that
+//                               share of requests to / (default 0.5, 5 min)
+//   /simulate/latency?ms=1500   for the next N minutes, add delay to /
+//   /simulate/reset             clear both
+//   /simulate/degraded          /health returns 503 (readiness probe fails)
+//   /simulate/crash             process exits (liveness and restart)
+//   /simulate/oom               allocate memory until the container is OOMKilled
+//
+// All accept ?minutes=N where it applies.
+const sim = { errorRate: 0, latencyMs: 0, until: 0, degraded: false };
+
+function simActive() {
+  if (Date.now() > sim.until) { sim.errorRate = 0; sim.latencyMs = 0; }
+  return sim;
+}
+function minutes(req, fallback = 5) {
+  const m = Number(req.query.minutes);
+  return (Number.isFinite(m) && m > 0 ? m : fallback) * 60_000;
+}
+
+// Applied to the main page only, so the demo signal is clean.
+app.use("/", (req, res, next) => {
+  if (req.path !== "/") return next();
+  const s = simActive();
+  const go = () => {
+    if (s.errorRate > 0 && Math.random() < s.errorRate) {
+      return res.status(500).send("Simulated failure");
+    }
+    next();
+  };
+  s.latencyMs > 0 ? setTimeout(go, s.latencyMs) : go();
+});
+
+app.get("/simulate/errors", (req, res) => {
+  const rate = Number(req.query.rate);
+  sim.errorRate = Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : 0.5;
+  sim.until = Date.now() + minutes(req);
+  res.json({ simulating: "errors", rate: sim.errorRate, until: new Date(sim.until) });
+});
+
+app.get("/simulate/latency", (req, res) => {
+  const ms = Number(req.query.ms);
+  sim.latencyMs = Number.isFinite(ms) && ms > 0 ? ms : 1500;
+  sim.until = Date.now() + minutes(req);
+  res.json({ simulating: "latency", ms: sim.latencyMs, until: new Date(sim.until) });
+});
+
+app.get("/simulate/reset", (req, res) => {
+  Object.assign(sim, { errorRate: 0, latencyMs: 0, until: 0, degraded: false });
+  res.json({ simulating: "nothing" });
+});
+
+app.get("/simulate/degraded", (req, res) => {
+  sim.degraded = true;
+  res.json({ simulating: "degraded", note: "/health now returns 503 until /simulate/reset" });
+});
+
+app.get("/simulate/crash", (req, res) => {
+  res.json({ simulating: "crash" });
+  setTimeout(() => process.exit(1), 100);
+});
+
+app.get("/simulate/oom", (req, res) => {
+  res.json({ simulating: "oom" });
+  const hog = [];
+  setInterval(() => hog.push(Buffer.alloc(50 * 1024 * 1024, 1)), 200);
+});
 
 app.get("/", (req, res) => {
   const colour = bannerColour(buildInfo.environment);
@@ -153,8 +211,9 @@ app.get("/", (req, res) => {
 </html>`);
 });
 
-// Health check endpoint (used by Azure and Octopus health checks)
+// Health check endpoint (used by Kubernetes probes and Octopus health checks)
 app.get("/health", (req, res) => {
+  if (sim.degraded) return res.status(503).json({ status: "degraded", ...buildInfo });
   res.json({ status: "ok", ...buildInfo });
 });
 

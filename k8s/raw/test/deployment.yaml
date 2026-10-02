@@ -4,8 +4,6 @@ metadata:
   name: raw-devloop-demo
   labels:
     app: raw-devloop-demo
-    app.kubernetes.io/version: "latest"
-    app.kubernetes.io/commit: "unknown"
     app.kubernetes.io/environment: "Test"
   namespace: devloop-demo-test
 spec:
@@ -22,8 +20,6 @@ spec:
     metadata:
       labels:
         app: raw-devloop-demo
-        app.kubernetes.io/version: "latest"
-        app.kubernetes.io/commit: "unknown"
         app.kubernetes.io/environment: "Test"
       annotations:
         ad.datadoghq.com/raw-devloop-demo: |
@@ -44,11 +40,30 @@ spec:
           ports:
             - containerPort: 3000
           env:
-            # DataDog APM
-            - name: DD_TRACE_ENABLED
-              value: "true"
-            - name: DD_SERVICE
+            # OpenTelemetry. The app sends OTLP to the Datadog Agent on its own node.
+            # Version and environment come from APP_VERSION (baked into the image)
+            # and APP_ENV (ConfigMap), so no per-release edits are needed here.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: OTEL_SERVICE_NAME
               value: "raw-devloop-demo"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(HOST_IP):4318"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            # Skip the "host" detector. Otherwise host.name is the pod name and
+            # Datadog treats every pod as a separate host. The agent fills in the
+            # real node name instead.
+            - name: OTEL_NODE_RESOURCE_DETECTORS
+              value: "env,process"
             # Runtime identity — set per environment via ConfigMap or Octopus variable substitution.
             - name: APP_ENV
               valueFrom:
