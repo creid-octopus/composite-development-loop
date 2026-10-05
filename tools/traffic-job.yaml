@@ -50,16 +50,16 @@ spec:
             - name: DURATION_MINUTES
               value: "15"
             # 3: optional failure to start first, as a path on TARGET.
-            #    Empty means none. Examples:
+            #    "none" (or empty) means no simulation. Examples:
             #      simulate/errors?rate=0.5&minutes=3
             #      simulate/latency?ms=1500&minutes=3
             #      simulate/reset
             - name: SIMULATE_PATH
-              value: ""
+              value: "none"
           command: ["sh", "-c"]
           args:
             - |
-              if [ -n "$SIMULATE_PATH" ]; then
+              if [ -n "$SIMULATE_PATH" ] && [ "$SIMULATE_PATH" != "none" ]; then
                 echo "Starting simulation: $SIMULATE_PATH"
                 curl -s "${TARGET%/}/$SIMULATE_PATH"; echo
               fi
