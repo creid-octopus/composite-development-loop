@@ -6,9 +6,3 @@ namespace: devloop-demo-production
 appEnv: Production
 
 image: ghcr.io/creid-octopus/composite-development-loop:1.0.16-sha-330cf05
-
-datadog:
-  enabled: false
-  ddTraceEnabled: false
-  autoInstrumentation:
-    enabled: false

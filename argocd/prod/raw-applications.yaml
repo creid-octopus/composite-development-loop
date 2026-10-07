@@ -26,6 +26,9 @@ spec:
         targetRevision: HEAD
         name: argocd-raw-yaml
         path: '{{ path }}'
+        # Baseline traffic is for the Octopus-deployed copy only
+        directory:
+          exclude: 'traffic-baseline.yaml'
       destination:
         namespace: '{{ namespace }}'
         server: https://kubernetes.default.svc

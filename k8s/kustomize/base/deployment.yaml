@@ -18,7 +18,7 @@ spec:
     metadata:
       labels:
         app: devloop-demo
-        app.kubernetes.io/version: "default"
+        # Patched per environment in each overlay
         app.kubernetes.io/environment: "default"
       annotations:
         ad.datadoghq.com/devloop-demo: |
@@ -36,10 +36,27 @@ spec:
           ports:
             - containerPort: 3000
           env:
-            - name: DD_TRACE_ENABLED
-              value: "false"
-            - name: DD_SERVICE
-              value: "devloop-demo"
+            # OpenTelemetry. The app sends OTLP to the Datadog Agent on its node.
+            # Version and environment come from APP_VERSION (image) and APP_ENV.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # Matches the deployed name after the overlays' namePrefix
+            - name: OTEL_SERVICE_NAME
+              value: "kustomize-devloop-demo"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(HOST_IP):4318"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            - name: OTEL_NODE_RESOURCE_DETECTORS
+              value: "env,process"
             - name: APP_ENV
               valueFrom:
                 configMapKeyRef:

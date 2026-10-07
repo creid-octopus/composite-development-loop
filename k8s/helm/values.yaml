@@ -19,17 +19,20 @@ requestsMemory: 128Mi
 limitsCpu: 250m
 limitsMemory: 256Mi
 
+# OpenTelemetry export to the Datadog Agent's OTLP host port.
+otel:
+  enabled: true
+  port: 4318
+
+# Datadog Autodiscovery http_check on /health.
 datadog:
+  httpCheck: true
+
+# Steady background requests so monitoring always has data.
+# Off by default: the Argo CD tracks are standard deployables.
+trafficBaseline:
   enabled: false
-  ddTraceEnabled: false
-  autoInstrumentation:
-    enabled: false
-
-podLabels: {}
-podAnnotations: {}
-
-appVersion: "latest"
-commitSha: "unknown"
+  intervalSeconds: 2
 
 livenessInitialDelaySeconds: 10
 livenessPeriodSeconds: 30

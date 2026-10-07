@@ -6,19 +6,18 @@ app: {{ .Values.appName }}
 {{- end }}
 
 {{/*
-K8s standard labels for version tracking — used by DataDog auto-discovery
+Environment label. Version and commit come from the image (APP_VERSION,
+APP_COMMIT_SHA) through OpenTelemetry, so they aren't repeated here.
 */}}
-{{- define "app.versionLabels" -}}
-app.kubernetes.io/version: {{ .Values.appVersion | default "latest" | quote }}
-app.kubernetes.io/commit: {{ .Values.commitSha | default "unknown" | quote }}
+{{- define "app.envLabels" -}}
 app.kubernetes.io/environment: {{ .Values.appEnv | quote }}
 {{- end }}
 
 {{/*
-Datadog Pod Auto-Discovery annotation — configures the DD agent's health checks
+Datadog Autodiscovery: the agent polls /health on each pod.
 */}}
 {{- define "app.datadogAnnotations" -}}
-{{- if .Values.datadog.enabled }}
+{{- if .Values.datadog.httpCheck }}
 ad.datadoghq.com/{{ .Values.appName }}: |
   checks:
     http_check:
@@ -27,10 +26,5 @@ ad.datadoghq.com/{{ .Values.appName }}: |
           - name: pod health
             url: "http://%%host%%:{{ .Values.containerPort }}/health"
             timeout: 1
-{{- if .Values.datadog.autoInstrumentation.enabled }}
-ad.itcontainers.io/container.0.image: ddapm-trace:latest
-ad.itcontainers.io/container.0.env/DD_TRACE_ENABLED: "true"
-ad.itcontainers.io/container.0.env/DD_SERVICE: {{ .Values.appName | quote }}
-{{- end }}
 {{- end }}
 {{- end }}
